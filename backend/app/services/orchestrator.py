@@ -3,6 +3,7 @@ import os
 import logging
 import json
 from pathlib import Path
+from typing import Optional
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO)
@@ -272,7 +273,7 @@ class FreqtradeOrchestrator:
             logger.error(f"Failed to get status for container {container_name}: {e}")
             return {"error": f"Docker API error: {e}", "bot_id": bot_id}
 
-    def get_bot_logs(self, bot_id: str, tail: int = 100) -> str | None:
+    def get_bot_logs(self, bot_id: str, tail: int = 100) -> Optional[str]:
         """
         Retrieves the logs of a specific Freqtrade container.
         bot_id is expected to be the container name.
