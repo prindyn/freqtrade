@@ -14,4 +14,7 @@ services:
       - "8080:8080"
     volumes:
       - ../frontend/vue-app:/app
+      - node_modules_frontend:/app/node_modules
     command: yarn serve
+volumes:
+  node_modules_frontend: {}
