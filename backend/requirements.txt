@@ -6,4 +6,5 @@ sqlalchemy
 passlib[bcrypt]
 python-jose[cryptography]
 pydantic[email]
+python-multipart
 # email-validator is commented out, can be added if needed for Pydantic's EmailStr strict validation

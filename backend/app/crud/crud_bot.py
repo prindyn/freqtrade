@@ -1,9 +1,10 @@
 from sqlalchemy.orm import Session
 from app.models import bot as models_bot  # Alias to avoid confusion
 from app.schemas import freqtrade_config as schemas_ft  # For type hinting if needed
+from typing import Optional
 
 
-def get_bot(db: Session, bot_id: str, tenant_id: str) -> models_bot.Bot | None:
+def get_bot(db: Session, bot_id: str, tenant_id: str) -> Optional[models_bot.Bot]:
     return (
         db.query(models_bot.Bot)
         .filter(models_bot.Bot.bot_id == bot_id, models_bot.Bot.tenant_id == tenant_id)
@@ -52,9 +53,9 @@ def update_bot_status(
     bot_id: str,
     tenant_id: str,
     status: str,
-    container_id: str | None = None,
-    exposed_host_port: int | None = None,
-) -> models_bot.Bot | None:
+    container_id: Optional[str] = None,
+    exposed_host_port: Optional[int] = None,
+) -> Optional[models_bot.Bot]:
     db_bot = get_bot(db, bot_id=bot_id, tenant_id=tenant_id)  # Verify ownership
     if db_bot:
         db_bot.status = status
@@ -71,9 +72,9 @@ def update_bot_paths(
     db: Session,
     bot_id: str,
     tenant_id: str,
-    config_path: str | None = None,
-    user_data_path: str | None = None,
-) -> models_bot.Bot | None:
+    config_path: Optional[str] = None,
+    user_data_path: Optional[str] = None,
+) -> Optional[models_bot.Bot]:
     db_bot = get_bot(db, bot_id=bot_id, tenant_id=tenant_id)  # Verify ownership
     if db_bot:
         if config_path:
@@ -85,7 +86,7 @@ def update_bot_paths(
     return db_bot
 
 
-def remove_bot(db: Session, bot_id: str, tenant_id: str) -> models_bot.Bot | None:
+def remove_bot(db: Session, bot_id: str, tenant_id: str) -> Optional[models_bot.Bot]:
     db_bot = get_bot(db, bot_id=bot_id, tenant_id=tenant_id)  # Verify ownership
     if db_bot:
         db.delete(db_bot)
