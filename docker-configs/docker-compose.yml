@@ -2,16 +2,16 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ../../backend
+      context: ../backend
     ports:
       - "8000:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
   frontend:
     build:
-      context: ../../frontend/vue-app
+      context: ../frontend/vue-app
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
     volumes:
-      - ../../frontend/vue-app:/app
+      - ../frontend/vue-app:/app
     command: yarn serve
