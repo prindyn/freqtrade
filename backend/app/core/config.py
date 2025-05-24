@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 # In a real application, get these from environment variables or a secrets manager.
 # It's crucial that SECRET_KEY is kept secret and is a strong, random string.
@@ -7,3 +11,12 @@ SECRET_KEY = os.environ.get(
 )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Database configuration
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", 
+    "sqlite:///./sql_app.db"
+)
+
+# Debug mode
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"

@@ -1,11 +1,40 @@
 version: '3.8'
 services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: freqtrade_saas
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ../backend
     ports:
       - "8000:8000"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/freqtrade_saas
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: freqtrade_saas
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+
   frontend:
     build:
       context: ../frontend/vue-app
@@ -16,5 +45,9 @@ services:
       - ../frontend/vue-app:/app
       - node_modules_frontend:/app/node_modules
     command: yarn serve
+    depends_on:
+      - backend
+
 volumes:
   node_modules_frontend: {}
+  postgres_data: {}
