@@ -6,6 +6,7 @@ import DashboardView from '../views/DashboardView.vue';
 import MarketplaceView from '../views/MarketplaceView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import SettingsView from '../views/SettingsView.vue';
+import TerminalView from '../views/TerminalView.vue';
 
 const routes = [
   {
@@ -57,6 +58,12 @@ const routes = [
     name: 'settings',
     component: SettingsView,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/terminal',
+    name: 'terminal',
+    component: TerminalView,
+    meta: { requiresAuth: true }
   }
 ];
 
@@ -66,14 +73,21 @@ const router = createRouter({
 });
 
 // Navigation guard: redirect to login if not authenticated
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const loggedIn = localStorage.getItem('authToken');
   const publicPages = ['home', 'login', 'register', 'about'];
   const authRequired = !publicPages.includes(to.name);
 
+  // If user is logged in and tries to access home, redirect to dashboard
+  if (loggedIn && to.name === 'home') {
+    return next({ name: 'dashboard' });
+  }
+
+  // If auth required and not logged in, redirect to login
   if (authRequired && !loggedIn) {
     return next({ name: 'login' });
   }
+  
   next();
 });
 

@@ -5,53 +5,29 @@
                 <div class="text-900 text-3xl font-medium mb-2">Welcome Back</div>
                 <div class="text-600 font-medium">Sign in to your account</div>
             </div>
-            
+
             <form @submit.prevent="handleLogin" class="flex flex-column gap-4">
                 <div class="flex flex-column gap-2">
                     <label for="email" class="text-900 font-medium">Email</label>
-                    <InputText 
-                        id="email" 
-                        type="email" 
-                        v-model="email" 
-                        placeholder="Enter your email"
-                        class="w-full p-3 border-round-lg"
-                        :class="{ 'p-invalid': emailError }"
-                    />
+                    <InputText id="email" type="email" v-model="email" placeholder="Enter your email"
+                        class="w-full p-3 border-round-lg" :class="{ 'p-invalid': emailError }" />
                 </div>
-                
+
                 <div class="flex flex-column gap-2">
                     <label for="password" class="text-900 font-medium">Password</label>
-                    <Password 
-                        id="password" 
-                        v-model="password" 
-                        placeholder="Enter your password" 
-                        :feedback="false"
-                        :toggleMask="true"
-                        class="w-full"
-                        inputClass="p-3 border-round-lg w-full"
-                        :class="{ 'p-invalid': passwordError }"
-                    />
+                    <Password id="password" v-model="password" placeholder="Enter your password" :feedback="false"
+                        :toggleMask="true" class="w-full" inputClass="p-3 border-round-lg w-full"
+                        :class="{ 'p-invalid': passwordError }" />
                 </div>
-                
-                <Button 
-                    type="submit" 
-                    label="Sign In" 
-                    icon="pi pi-sign-in" 
-                    :loading="isLoading" 
-                    class="w-full p-3 text-xl border-round-lg mt-2 login-button"
-                />
+
+                <Button type="submit" label="Sign In" icon="pi pi-sign-in" :loading="isLoading"
+                    class="w-full p-3 text-xl border-round-lg mt-2 login-button" />
             </form>
-            
-            <Message 
-                v-if="error" 
-                severity="error" 
-                :closable="true" 
-                @close="error = null"
-                class="mt-4"
-            >
+
+            <Message v-if="error" severity="error" :closable="true" @close="error = null" class="mt-4">
                 {{ error }}
             </Message>
-            
+
             <div class="text-center mt-6 pt-4 border-top-1 surface-border">
                 <span class="text-600">Don't have an account? </span>
                 <router-link to="/register" class="font-medium no-underline text-primary cursor-pointer">
@@ -93,7 +69,7 @@ export default {
                 this.error = 'Please fill in all fields correctly';
                 return;
             }
-            
+
             this.isLoading = true;
             this.error = null;
             try {
@@ -242,6 +218,7 @@ label {
         opacity: 0;
         transform: translateY(30px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -249,9 +226,26 @@ label {
 }
 
 @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-    20%, 40%, 60%, 80% { transform: translateX(5px); }
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+        transform: translateX(-5px);
+    }
+
+    20%,
+    40%,
+    60%,
+    80% {
+        transform: translateX(5px);
+    }
 }
 
 :deep(.p-message) {
@@ -263,6 +257,7 @@ label {
         opacity: 0;
         transform: translateY(-10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
