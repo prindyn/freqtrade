@@ -12,11 +12,22 @@ from app.api.endpoints import websocket as websocket_router  # Import WebSocket 
 from app.api.endpoints import external_bots as external_bots_router  # Import external bots router
 from app.api.endpoints import shared_bots as shared_bots_router  # Import shared bots router
 
+# Import logging
+from app.core.logging import setup_logging, get_logger
+from app.middleware.logging import RequestLoggingMiddleware
+
+# Setup logging before anything else
+setup_logging()
+logger = get_logger("main")
+
 app = FastAPI(
-    title="Freqtrade SaaS API",
-    description="API for managing Freqtrade bot instances.",
+    title="TradeWise API",
+    description="API for managing automated trading bot instances.",
     version="0.1.0",
 )
+
+# Add logging middleware first
+app.add_middleware(RequestLoggingMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
@@ -31,7 +42,9 @@ app.add_middleware(
 # Initialize DB on startup
 @app.on_event("startup")
 def on_startup():
+    logger.info("Starting TradeWise API", extra={"event_type": "application_startup"})
     db_session.init_db()
+    logger.info("Database initialized", extra={"event_type": "database_initialized"})
 
 
 # No global orchestrator instance here, it's instantiated within bots.py router or per-call if needed.

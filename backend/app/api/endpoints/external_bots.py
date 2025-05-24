@@ -14,6 +14,9 @@ from app.db import session as db_session
 from app.crud import crud_bot
 from app.models import user as models_user, bot as models_bot
 from app.api import deps
+from app.core.logging import get_logger, log_business_event, log_security_event
+
+logger = get_logger("external_bots_api")
 
 router = APIRouter()
 external_bot_manager = ExternalBotManager()
@@ -25,20 +28,49 @@ async def test_bot_connection(
     current_user: models_user.User = Depends(deps.get_current_active_user),
 ):
     """
-    Test connection to an external FreqTrade bot before adding it
+    Test connection to an external trading bot before adding it
     """
+    logger.info(
+        "User testing bot connection",
+        extra={
+            "event_type": "bot_connection_test_request",
+            "user_id": str(current_user.id),
+            "tenant_id": current_user.tenant_id,
+            "api_url": connection_test.api_url
+        }
+    )
+    
     result = external_bot_manager.test_bot_connection(
         api_url=connection_test.api_url, api_token=connection_test.api_token
     )
 
     if result["success"]:
+        log_business_event(
+            event_type="bot_connection_test_success",
+            description="User successfully tested bot connection",
+            user_id=str(current_user.id),
+            tenant_id=current_user.tenant_id,
+            api_url=connection_test.api_url
+        )
+        
         return {
             "success": True,
-            "message": "Successfully connected to FreqTrade bot",
+            "message": "Successfully connected to trading bot",
             "bot_info": result.get("bot_info", {}),
             "connection_status": "healthy",
         }
     else:
+        logger.warning(
+            "Bot connection test failed",
+            extra={
+                "event_type": "bot_connection_test_failure",
+                "user_id": str(current_user.id),
+                "tenant_id": current_user.tenant_id,
+                "api_url": connection_test.api_url,
+                "error": result.get("error")
+            }
+        )
+        
         return {
             "success": False,
             "message": result["message"],
