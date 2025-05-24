@@ -440,7 +440,7 @@ Note: Commands are executed directly on the selected bot server.
             try {
                 const response = await api.getExternalBots();
                 this.availableBots = response.data.map(bot => ({
-                    id: bot.id,
+                    id: bot.bot_id || bot.id,
                     name: bot.name,
                     status: bot.status
                 }));

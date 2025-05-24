@@ -153,7 +153,7 @@ export default {
   // WebSocket for real-time terminal updates
   createTerminalWebSocket(botId, onMessage, onError, onClose) {
     const token = localStorage.getItem('authToken');
-    const wsUrl = `ws://localhost:8000/api/v1/external-bots/${botId}/terminal/ws?token=${token}`;
+    const wsUrl = `ws://localhost:8000/api/v1/ws/bot/${botId}/${token}`;
     
     const ws = new WebSocket(wsUrl);
     

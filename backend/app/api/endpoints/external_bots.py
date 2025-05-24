@@ -437,6 +437,43 @@ async def get_external_bot_trades(
         )
 
 
+@router.get("/{bot_id}/ping")
+async def ping_external_bot(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """
+    Ping an external FreqTrade bot to check connectivity
+    """
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot or db_bot.bot_type != "external":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="External bot not found"
+        )
+
+    result = await external_bot_manager.ping_bot(
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
+    )
+
+    if result["success"]:
+        return {
+            "success": True,
+            "message": "Bot ping successful",
+            "timestamp": result["timestamp"],
+            "response_time": result.get("response_time")
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to ping bot: {result.get('error', 'Unknown error')}",
+        )
+
+
 @router.delete("/{bot_id}")
 async def disconnect_external_bot(
     bot_id: str,
