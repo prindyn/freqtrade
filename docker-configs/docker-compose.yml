@@ -3,9 +3,9 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: freqtrade_saas
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -28,12 +28,12 @@ services:
       POSTGRES_DB: freqtrade_saas
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - ../backend:/app
+      - ../backend:/service
+      - freqtrade_data:/service/freqtrade_data
 
   frontend:
     build:
@@ -51,3 +51,4 @@ services:
 volumes:
   node_modules_frontend: {}
   postgres_data: {}
+  freqtrade_data: {}

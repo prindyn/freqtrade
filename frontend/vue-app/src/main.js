@@ -3,6 +3,7 @@ import App from './App.vue';
 import router from './router';
 import api from '@/services/api';
 import PrimeVue from 'primevue/config';
+import ToastService from 'primevue/toastservice';
 
 // Import PrimeVue theme (e.g., Saga Blue, choose one)
 import 'primevue/resources/themes/saga-blue/theme.css'; // or other themes like 'lara-light-indigo'
@@ -23,6 +24,7 @@ if (token) {
 }
 app.use(router);
 app.use(PrimeVue, { ripple: true }); // ripple effect is optional
+app.use(ToastService);
 
 // Globally register components if you choose to:
 // app.component('Button', Button);

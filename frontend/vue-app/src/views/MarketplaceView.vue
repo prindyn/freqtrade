@@ -172,10 +172,11 @@ export default {
             this.loading = true;
             try {
                 const response = await api.getSharedBotsMarketplace();
-                this.sharedBots = response.data;
+                this.sharedBots = response.data || [];
                 this.updateMarketplaceStats();
             } catch (error) {
                 console.error('Error loading marketplace:', error);
+                this.sharedBots = [];
                 this.$toast.add({
                     severity: 'error',
                     summary: 'Error',
@@ -190,9 +191,10 @@ export default {
         async loadMySubscriptions() {
             try {
                 const response = await api.getMySharedBotSubscriptions();
-                this.mySubscriptions = response.data;
+                this.mySubscriptions = response.data || [];
             } catch (error) {
                 console.error('Error loading subscriptions:', error);
+                this.mySubscriptions = [];
             }
         },
         

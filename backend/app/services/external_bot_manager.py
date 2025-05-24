@@ -1,25 +1,28 @@
 import requests
-import logging
 import asyncio
+import time
 from typing import Dict, List, Optional, Union
 from datetime import datetime
 import json
 
-logger = logging.getLogger(__name__)
+from app.core.logging import get_logger, log_external_api_call
+
+logger = get_logger("external_bot_manager")
 
 
 class ExternalBotManager:
     """
-    Manages connections to external FreqTrade bot instances via their REST APIs
+    Manages connections to external trading bot instances via their REST APIs
     """
     
     def __init__(self):
         self.session = requests.Session()
-        self.session.timeout = 10  # 10 second timeout for API calls
+        # Set both connect and read timeouts
+        self.timeout = (5, 10)  # (connect_timeout, read_timeout)
     
     def test_bot_connection(self, api_url: str, api_token: str) -> Dict:
         """
-        Test connection to an external FreqTrade bot
+        Test connection to an external trading bot
         
         Args:
             api_url: Bot's API URL (e.g., "http://192.168.1.100:8080")
@@ -28,37 +31,91 @@ class ExternalBotManager:
         Returns:
             Dict with connection status and bot info
         """
+        start_time = time.time()
+        normalized_url = api_url.rstrip('/')
+        
+        logger.info(
+            "Testing connection to external trading bot",
+            extra={
+                "api_url": normalized_url,
+                "event_type": "bot_connection_test_start"
+            }
+        )
+        
         try:
-            # Normalize URL
-            api_url = api_url.rstrip('/')
-            
             headers = {
                 'Authorization': f'Bearer {api_token}',
                 'Content-Type': 'application/json'
             }
             
             # Test basic connectivity with /api/v1/ping
+            ping_start = time.time()
             response = self.session.get(
-                f"{api_url}/api/v1/ping",
-                headers=headers
+                f"{normalized_url}/api/v1/ping",
+                headers=headers,
+                timeout=self.timeout
+            )
+            ping_duration = (time.time() - ping_start) * 1000
+            
+            log_external_api_call(
+                service="trading_bot",
+                endpoint="/api/v1/ping",
+                method="GET",
+                status_code=response.status_code,
+                duration_ms=ping_duration,
+                api_url=normalized_url
             )
             
             if response.status_code == 200:
                 # Get bot status and info
+                status_start = time.time()
                 status_response = self.session.get(
-                    f"{api_url}/api/v1/status",
-                    headers=headers
+                    f"{normalized_url}/api/v1/status",
+                    headers=headers,
+                    timeout=self.timeout
+                )
+                status_duration = (time.time() - status_start) * 1000
+                
+                log_external_api_call(
+                    service="trading_bot",
+                    endpoint="/api/v1/status",
+                    method="GET",
+                    status_code=status_response.status_code,
+                    duration_ms=status_duration,
+                    api_url=normalized_url
                 )
                 
                 if status_response.status_code == 200:
                     bot_info = status_response.json()
+                    total_duration = (time.time() - start_time) * 1000
+                    
+                    logger.info(
+                        "Bot connection test successful",
+                        extra={
+                            "api_url": normalized_url,
+                            "event_type": "bot_connection_test_success",
+                            "total_duration_ms": total_duration,
+                            "bot_info": bot_info
+                        }
+                    )
+                    
                     return {
                         "success": True,
                         "status": "connected",
                         "bot_info": bot_info,
-                        "message": "Successfully connected to FreqTrade bot"
+                        "message": "Successfully connected to trading bot"
                     }
                 else:
+                    logger.warning(
+                        "Bot ping successful but status failed",
+                        extra={
+                            "api_url": normalized_url,
+                            "event_type": "bot_connection_test_partial_failure",
+                            "ping_status": response.status_code,
+                            "status_status": status_response.status_code
+                        }
+                    )
+                    
                     return {
                         "success": False,
                         "status": "error",
@@ -66,21 +123,48 @@ class ExternalBotManager:
                         "message": "Bot ping successful but status failed"
                     }
             else:
+                logger.warning(
+                    "Failed to connect to trading bot",
+                    extra={
+                        "api_url": normalized_url,
+                        "event_type": "bot_connection_test_failure",
+                        "status_code": response.status_code
+                    }
+                )
+                
                 return {
                     "success": False,
                     "status": "error", 
                     "error": f"Connection failed: {response.status_code}",
-                    "message": "Failed to connect to FreqTrade bot"
+                    "message": "Failed to connect to trading bot"
                 }
                 
         except requests.exceptions.ConnectTimeout:
+            logger.warning(
+                "Bot connection test timed out",
+                extra={
+                    "api_url": normalized_url,
+                    "event_type": "bot_connection_test_timeout",
+                    "timeout_seconds": self.timeout[0]
+                }
+            )
+            
             return {
                 "success": False,
                 "status": "error",
                 "error": "Connection timeout",
                 "message": "Bot did not respond within timeout period"
             }
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(
+                "Bot connection test failed with connection error",
+                extra={
+                    "api_url": normalized_url,
+                    "event_type": "bot_connection_test_connection_error",
+                    "error": str(e)
+                }
+            )
+            
             return {
                 "success": False,
                 "status": "error",
@@ -88,6 +172,16 @@ class ExternalBotManager:
                 "message": "Could not connect to bot - check URL and network"
             }
         except Exception as e:
+            logger.error(
+                "Bot connection test failed with unexpected error",
+                extra={
+                    "api_url": normalized_url,
+                    "event_type": "bot_connection_test_error",
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+            
             return {
                 "success": False,
                 "status": "error",
