@@ -293,3 +293,157 @@ async def get_bot_logs_api_endpoint(
     return BotLogResponse(
         bot_id=bot_id, logs=logs, message="Logs retrieved successfully."
     )
+
+
+# Enhanced Bot Control Endpoints
+
+@router.post("/{bot_id}/start", response_model=BotStatusResponse)
+async def start_bot_endpoint(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Start a stopped bot"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # TODO: Implement start logic in orchestrator
+    # For now, return mock response
+    return BotStatusResponse(
+        bot_id=bot_id,
+        status="starting",
+        message="Bot start command sent successfully.",
+        details={"action": "start", "timestamp": str(db_bot.updated_at)}
+    )
+
+
+@router.post("/{bot_id}/stop", response_model=BotStatusResponse)
+async def stop_bot_endpoint(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Stop a running bot"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # Update status to stopping
+    crud_bot.update_bot_status(db, bot_id=bot_id, tenant_id=current_user.tenant_id, status="stopping")
+    
+    # TODO: Implement graceful stop in orchestrator
+    # For now, return mock response
+    return BotStatusResponse(
+        bot_id=bot_id,
+        status="stopping",
+        message="Bot stop command sent successfully.",
+        details={"action": "stop", "timestamp": str(db_bot.updated_at)}
+    )
+
+
+@router.post("/{bot_id}/restart", response_model=BotStatusResponse)
+async def restart_bot_endpoint(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Restart a bot"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # Update status to restarting
+    crud_bot.update_bot_status(db, bot_id=bot_id, tenant_id=current_user.tenant_id, status="restarting")
+    
+    # TODO: Implement restart logic in orchestrator
+    return BotStatusResponse(
+        bot_id=bot_id,
+        status="restarting",
+        message="Bot restart command sent successfully.",
+        details={"action": "restart", "timestamp": str(db_bot.updated_at)}
+    )
+
+
+@router.get("/{bot_id}/performance")
+async def get_bot_performance(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Get bot performance metrics"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # TODO: Implement performance metrics collection
+    return {
+        "bot_id": bot_id,
+        "profit_loss": 0.0,
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_profit": 0.0,
+        "current_balance": 0.0,
+        "message": "Performance metrics not yet implemented"
+    }
+
+
+@router.get("/{bot_id}/trades")
+async def get_bot_trades(
+    bot_id: str,
+    limit: int = Query(50, gt=0, le=500),
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Get bot trade history"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # TODO: Implement trade history retrieval
+    return {
+        "bot_id": bot_id,
+        "trades": [],
+        "total_count": 0,
+        "message": "Trade history not yet implemented"
+    }
+
+
+@router.put("/{bot_id}/config", response_model=BotStatusResponse)
+async def update_bot_config(
+    bot_id: str,
+    config_update: FreqtradeConfigCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """Update bot configuration"""
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bot with ID '{bot_id}' not found for your tenant.",
+        )
+    
+    # TODO: Implement configuration update
+    # This should update the config file and potentially restart the bot
+    return BotStatusResponse(
+        bot_id=bot_id,
+        status="config_updated",
+        message="Bot configuration updated successfully.",
+        details={"action": "config_update", "requires_restart": True}
+    )

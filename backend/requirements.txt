@@ -9,4 +9,5 @@ python-jose[cryptography]
 pydantic[email]
 python-multipart
 python-dotenv
+websockets
 # email-validator is commented out, can be added if needed for Pydantic's EmailStr strict validation

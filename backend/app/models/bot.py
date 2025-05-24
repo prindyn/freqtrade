@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
 from sqlalchemy.sql import func
 from app.db.session import Base
 
@@ -7,26 +7,39 @@ class Bot(Base):
     __tablename__ = "bots"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    # bot_id is the unique name for the bot instance, often derived from tenant_id, e.g., "ft-tenant-xyz"
-    # This will also be the container name.
+    # bot_id is the unique identifier for the bot instance
     bot_id = Column(String, unique=True, index=True, nullable=False)
     tenant_id = Column(String, index=True, nullable=False)
+    
+    # Bot type: 'external' for user's own bots, 'shared' for platform-managed bots
+    bot_type = Column(String, nullable=False, default="external")  # 'external' or 'shared'
+    
+    # Status of the bot connection/instance
     status = Column(
         String, nullable=False, default="unknown"
-    )  # e.g., "creating", "running", "stopped", "error"
+    )  # e.g., "connected", "running", "stopped", "error", "disconnected"
 
-    # Paths are stored to know where the bot's configuration and data reside on the host
-    config_path = Column(
-        String, nullable=True
-    )  # Path to the specific config.json used by this bot
-    user_data_path = Column(
-        String, nullable=True
-    )  # Path to the user_data directory for this bot
+    # Bot metadata
+    name = Column(String, nullable=True)  # Human-readable name
+    description = Column(Text, nullable=True)  # Bot description
+    
+    # External bot connection details (for user's own bots)
+    api_url = Column(String, nullable=True)  # FreqTrade bot API URL (e.g., http://user-server:8080)
+    api_token = Column(String, nullable=True)  # FreqTrade bot API token for authentication
+    
+    # Shared bot details (for platform-managed bots)
+    config_template = Column(String, nullable=True)  # Configuration template for shared bots
+    is_public = Column(Boolean, default=False)  # Whether shared bot is available to all users
+    
+    # Legacy fields (for backward compatibility and shared bots)
+    config_path = Column(String, nullable=True)  # Path to config.json (shared bots only)
+    user_data_path = Column(String, nullable=True)  # Path to user_data (shared bots only)
+    exposed_host_port = Column(Integer, nullable=True)  # Port (shared bots only)
+    container_id = Column(String, nullable=True)  # Docker container ID (shared bots only)
 
-    exposed_host_port = Column(
-        Integer, nullable=True
-    )  # The port on the host machine mapped to the bot's API
-    container_id = Column(String, nullable=True)  # Docker's internal container ID
+    # Connection health
+    last_ping = Column(DateTime(timezone=True), nullable=True)  # Last successful API ping
+    connection_error = Column(Text, nullable=True)  # Last connection error message
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

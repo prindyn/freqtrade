@@ -3,12 +3,21 @@ import HomeView from '../views/HomeView.vue';
 import CreateBotView from '../views/CreateBotView.vue';
 import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
+import DashboardView from '../views/DashboardView.vue';
+import ConnectBotView from '../views/ConnectBotView.vue';
+import MarketplaceView from '../views/MarketplaceView.vue';
 
 const routes = [
   {
     path: '/',
     name: 'home',
     component: HomeView
+  },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: DashboardView,
+    meta: { requiresAuth: true }
   },
   {
     path: '/login',
@@ -36,6 +45,18 @@ const routes = [
     name: 'create-bot',
     component: CreateBotView,
     meta: { requiresAuth: true } // Example of adding auth guard meta
+  },
+  {
+    path: '/connect-bot',
+    name: 'connect-bot',
+    component: ConnectBotView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/marketplace',
+    name: 'marketplace',
+    component: MarketplaceView,
+    meta: { requiresAuth: true }
   }
 ];
 

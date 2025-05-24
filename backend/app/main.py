@@ -8,6 +8,9 @@ from sqlalchemy.orm import (
 from app.db import session as db_session
 from app.api.endpoints import auth as auth_router  # Import the auth router
 from app.api.endpoints import bots as bots_router  # Import the new bots router
+from app.api.endpoints import websocket as websocket_router  # Import WebSocket router
+from app.api.endpoints import external_bots as external_bots_router  # Import external bots router
+from app.api.endpoints import shared_bots as shared_bots_router  # Import shared bots router
 
 app = FastAPI(
     title="Freqtrade SaaS API",
@@ -43,6 +46,12 @@ async def root():
 app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["Authentication"])
 # Include the new bots router
 app.include_router(bots_router.router, prefix="/api/v1/bots", tags=["Bots"])
+# Include external bots router
+app.include_router(external_bots_router.router, prefix="/api/v1/external-bots", tags=["External Bots"])
+# Include shared bots router
+app.include_router(shared_bots_router.router, prefix="/api/v1/shared-bots", tags=["Shared Bots"])
+# Include WebSocket router
+app.include_router(websocket_router.router, prefix="/api/v1", tags=["WebSocket"])
 
 
 # if __name__ == "__main__":
