@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Index
+from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.sql import func
 from app.db.session import Base
 
@@ -32,8 +32,6 @@ class Bot(Base):
     updated_at = Column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now()
     )
-
-    __table_args__ = (Index("ix_bots_tenant_id", "tenant_id"),)
 
     def __repr__(self):
         return f"<Bot(id={self.id}, bot_id='{self.bot_id}', tenant_id='{self.tenant_id}', status='{self.status}')>"

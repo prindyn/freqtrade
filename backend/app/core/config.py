@@ -12,10 +12,10 @@ SECRET_KEY = os.environ.get(
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Database configuration
+# Database configuration - Default to PostgreSQL for development
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", 
-    "sqlite:///./sql_app.db"
+    "postgresql://postgres:postgres@localhost:5432/freqtrade_saas"
 )
 
 # Debug mode
