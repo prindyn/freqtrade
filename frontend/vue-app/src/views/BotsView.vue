@@ -117,67 +117,24 @@
                 <Column header="Actions" class="actions-column">
                     <template #body="slotProps">
                         <div class="bot-actions">
-                            <!-- Control Buttons -->
-                            <div class="control-buttons">
-                                <Button 
-                                    icon="pi pi-play" 
-                                    class="action-btn success"
-                                    v-tooltip="'Start Bot'" 
+                            <!-- Primary Control Buttons -->
+                            <div class="primary-controls">
+                                <Button icon="pi pi-play" class="control-btn success" v-tooltip="'Start Bot'"
                                     @click="startBot(slotProps.data)"
                                     :disabled="slotProps.data.status === 'running' || isExecuting(slotProps.data.id)"
                                     :loading="isExecuting(slotProps.data.id) && lastAction === 'start'" />
-                                
-                                <Button 
-                                    icon="pi pi-pause" 
-                                    class="action-btn warning"
-                                    v-tooltip="'Pause Bot'" 
-                                    @click="pauseBot(slotProps.data)"
-                                    :disabled="slotProps.data.status !== 'running' || isExecuting(slotProps.data.id)"
-                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'pause'" />
-                                
-                                <Button 
-                                    icon="pi pi-stop" 
-                                    class="action-btn danger"
-                                    v-tooltip="'Stop Bot'" 
+
+                                <Button icon="pi pi-stop" class="control-btn danger" v-tooltip="'Stop Bot'"
                                     @click="stopBot(slotProps.data)"
                                     :disabled="slotProps.data.status === 'stopped' || isExecuting(slotProps.data.id)"
                                     :loading="isExecuting(slotProps.data.id) && lastAction === 'stop'" />
-                                
-                                <Button 
-                                    icon="pi pi-refresh" 
-                                    class="action-btn info"
-                                    v-tooltip="'Restart Bot'" 
-                                    @click="restartBot(slotProps.data)"
-                                    :disabled="isExecuting(slotProps.data.id)"
-                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'restart'" />
+
+                                <!-- More Actions Dropdown -->
+                                <SplitButton icon="pi pi-cog" class="control-btn secondary" v-tooltip="'More Actions'"
+                                    :model="getMoreActionsMenu(slotProps.data)" @click="openBotSettings(slotProps.data)"
+                                    menuButtonIcon="pi pi-chevron-down" />
                             </div>
-                            
-                            <!-- Additional Actions -->
-                            <div class="additional-actions">
-                                <Button 
-                                    icon="pi pi-desktop" 
-                                    class="action-btn secondary"
-                                    v-tooltip="'Open Terminal'" 
-                                    @click="openTerminal(slotProps.data)" />
-                                
-                                <Button 
-                                    icon="pi pi-chart-line" 
-                                    class="action-btn info"
-                                    v-tooltip="'View Performance'" 
-                                    @click="viewBotPerformance(slotProps.data)" />
-                                
-                                <Button 
-                                    icon="pi pi-cog" 
-                                    class="action-btn secondary"
-                                    v-tooltip="'Bot Settings'" 
-                                    @click="openBotSettings(slotProps.data)" />
-                                
-                                <Button 
-                                    icon="pi pi-trash" 
-                                    class="action-btn danger-outline"
-                                    v-tooltip="'Delete Bot'" 
-                                    @click="deleteBot(slotProps.data)" />
-                            </div>
+
                         </div>
                     </template>
                 </Column>
@@ -193,6 +150,7 @@
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
+import SplitButton from 'primevue/splitbutton';
 import Tag from 'primevue/tag';
 import Dialog from 'primevue/dialog';
 import api from '@/services/api';
@@ -204,6 +162,7 @@ export default {
         DataTable,
         Column,
         Button,
+        SplitButton,
         Tag,
         Dialog,
         ConnectBotModal
@@ -222,7 +181,10 @@ export default {
             websocket: null,
             executingBots: new Set(), // Track which bots are currently executing commands
             lastAction: null, // Track the last action for loading states
-            realTimeData: {} // Store real-time bot data
+            realTimeData: {}, // Store real-time bot data
+            commandInputs: {}, // Store command inputs for each bot
+            commandHistory: {}, // Store command history for each bot
+            showCommandHistory: {} // Toggle command history display for each bot
         };
     },
     async mounted() {
@@ -234,7 +196,7 @@ export default {
         } else {
             console.warn('No auth token found in localStorage');
         }
-        
+
         await this.loadBots();
         this.initWebSocket();
     },
@@ -248,7 +210,7 @@ export default {
             this.loading = true;
             try {
                 console.log('Loading bots...');
-                
+
                 // Load external bots (primary) and shared bots
                 const [externalBotsResponse, sharedBotsResponse] = await Promise.all([
                     api.getExternalBots().catch(err => {
@@ -275,7 +237,7 @@ export default {
                         status: bot.status || 'unknown',
                         details: {
                             created_at: bot.created_at,
-                            host_port: bot.api_url ? (function() {
+                            host_port: bot.api_url ? (function () {
                                 try {
                                     return new URL(bot.api_url).port || new URL(bot.api_url).hostname;
                                 } catch (e) {
@@ -307,13 +269,18 @@ export default {
                 this.bots = [...externalBots, ...sharedBots];
                 console.log('Combined bots:', this.bots);
 
+                // Initialize command data for each bot
+                this.bots.forEach(bot => {
+                    this.initializeBotCommandData(bot.id);
+                });
+
                 // Load real-time data for external bots
                 if (externalBots.length > 0) {
                     await this.loadRealTimeData();
                 }
-                
+
                 this.updateStats();
-                
+
                 // Show success message if bots were loaded
                 if (this.bots.length > 0) {
                     console.log(`Successfully loaded ${this.bots.length} bots`);
@@ -326,7 +293,7 @@ export default {
                         life: 5000
                     });
                 }
-                
+
             } catch (error) {
                 console.error('Error loading bots:', error);
                 this.$toast.add({
@@ -344,11 +311,11 @@ export default {
             // Load real-time data for each external bot
             const externalBots = this.bots.filter(bot => bot.bot_type === 'external');
             console.log(`Loading real-time data for ${externalBots.length} external bots...`);
-            
+
             for (const bot of externalBots) {
                 try {
                     console.log(`Loading data for bot ${bot.id} (${bot.name})...`);
-                    
+
                     const [statusResponse, performanceResponse] = await Promise.all([
                         api.getBotStatus(bot.id).catch(err => {
                             console.warn(`Failed to get status for bot ${bot.id}:`, err);
@@ -359,26 +326,26 @@ export default {
                             return null;
                         })
                     ]);
-                    
+
                     console.log(`Bot ${bot.id} status response:`, statusResponse);
                     console.log(`Bot ${bot.id} performance response:`, performanceResponse);
-                    
+
                     this.realTimeData[bot.id] = {
                         status: statusResponse?.data || {},
                         performance: performanceResponse?.data || {}
                     };
-                    
+
                     // Update bot status with real data
                     if (statusResponse?.data?.status) {
                         console.log(`Updating bot ${bot.id} status from '${bot.status}' to '${statusResponse.data.status}'`);
                         bot.status = statusResponse.data.status;
                     }
-                    
+
                 } catch (error) {
                     console.error(`Error loading data for bot ${bot.id}:`, error);
                 }
             }
-            
+
             console.log('Real-time data loading complete. Updated bots:', this.bots);
         },
 
@@ -410,6 +377,61 @@ export default {
             return new Date(dateString).toLocaleDateString();
         },
 
+        formatTime(timestamp) {
+            return new Date(timestamp).toLocaleTimeString();
+        },
+
+        // Initialize command data for a bot if it doesn't exist
+        initializeBotCommandData(botId) {
+            if (!this.commandInputs[botId]) {
+                this.commandInputs[botId] = { command: null };
+            }
+            if (!this.commandHistory[botId]) {
+                this.commandHistory[botId] = [];
+            }
+            if (!this.showCommandHistory[botId]) {
+                this.showCommandHistory[botId] = false;
+            }
+        },
+
+        // Get more actions menu for each bot
+        getMoreActionsMenu(bot) {
+            return [
+                {
+                    label: 'Restart',
+                    icon: 'pi pi-refresh',
+                    command: () => this.restartBot(bot),
+                    disabled: this.isExecuting(bot.id)
+                },
+                {
+                    label: 'Pause',
+                    icon: 'pi pi-pause',
+                    command: () => this.pauseBot(bot),
+                    disabled: bot.status !== 'running' || this.isExecuting(bot.id)
+                },
+                { separator: true },
+                {
+                    label: 'Terminal',
+                    icon: 'pi pi-desktop',
+                    command: () => this.openTerminal(bot)
+                },
+                {
+                    label: 'Performance',
+                    icon: 'pi pi-chart-line',
+                    command: () => this.viewBotPerformance(bot)
+                },
+                { separator: true },
+                {
+                    label: 'Delete',
+                    icon: 'pi pi-trash',
+                    command: () => this.deleteBot(bot),
+                    class: 'p-menuitem-danger'
+                }
+            ];
+        },
+
+
+
         // Helper method to check if bot is executing a command
         isExecuting(botId) {
             return this.executingBots.has(botId);
@@ -429,24 +451,26 @@ export default {
 
             this.executingBots.add(bot.id);
             this.lastAction = 'start';
-            
+
             try {
-                await api.startExternalBot(bot.id);
+                // Send start command to the actual bot server
+                await api.executeTerminalCommand(bot.id, 'start', []);
+
                 this.$toast.add({
                     severity: 'success',
                     summary: 'Success',
-                    detail: `Bot "${bot.name}" start command sent`,
+                    detail: `Bot "${bot.name}" start command sent successfully`,
                     life: 3000
                 });
-                
+
                 // Update local status immediately
                 bot.status = 'starting';
-                
-                // Refresh data after a delay
+
+                // Refresh data after a delay to get updated status
                 setTimeout(async () => {
                     await this.loadRealTimeData();
-                }, 2000);
-                
+                }, 3000);
+
             } catch (error) {
                 console.error('Error starting bot:', error);
                 this.$toast.add({
@@ -473,20 +497,26 @@ export default {
 
             this.executingBots.add(bot.id);
             this.lastAction = 'pause';
-            
+
             try {
-                // Send pause command via terminal command
-                await api.executeTerminalCommand(bot.id, 'pause', []);
+                // Send pause command to the actual bot server
+                await api.executeTerminalCommand(bot.id, 'forcebuy', ['cancel_open_orders']);
+
                 this.$toast.add({
                     severity: 'info',
                     summary: 'Success',
-                    detail: `Bot "${bot.name}" pause command sent`,
+                    detail: `Bot "${bot.name}" pause command sent successfully`,
                     life: 3000
                 });
-                
+
                 // Update local status
                 bot.status = 'paused';
-                
+
+                // Refresh data after a delay
+                setTimeout(async () => {
+                    await this.loadRealTimeData();
+                }, 3000);
+
             } catch (error) {
                 console.error('Error pausing bot:', error);
                 this.$toast.add({
@@ -513,24 +543,26 @@ export default {
 
             this.executingBots.add(bot.id);
             this.lastAction = 'stop';
-            
+
             try {
-                await api.stopExternalBot(bot.id);
+                // Send stop command to the actual bot server
+                await api.executeTerminalCommand(bot.id, 'stop', []);
+
                 this.$toast.add({
                     severity: 'success',
                     summary: 'Success',
-                    detail: `Bot "${bot.name}" stop command sent`,
+                    detail: `Bot "${bot.name}" stop command sent successfully`,
                     life: 3000
                 });
-                
+
                 // Update local status immediately
                 bot.status = 'stopping';
-                
-                // Refresh data after a delay
+
+                // Refresh data after a delay to get updated status
                 setTimeout(async () => {
                     await this.loadRealTimeData();
-                }, 2000);
-                
+                }, 3000);
+
             } catch (error) {
                 console.error('Error stopping bot:', error);
                 this.$toast.add({
@@ -557,30 +589,30 @@ export default {
 
             this.executingBots.add(bot.id);
             this.lastAction = 'restart';
-            
+
             try {
-                // Stop first, then start
-                await api.stopExternalBot(bot.id);
+                // Send stop command first
+                await api.executeTerminalCommand(bot.id, 'stop', []);
                 bot.status = 'stopping';
-                
-                // Wait a moment, then start
+
+                // Wait a moment, then send start command
                 setTimeout(async () => {
                     try {
-                        await api.startExternalBot(bot.id);
+                        await api.executeTerminalCommand(bot.id, 'start', []);
                         bot.status = 'starting';
-                        
+
                         this.$toast.add({
                             severity: 'success',
                             summary: 'Success',
-                            detail: `Bot "${bot.name}" restart command sent`,
+                            detail: `Bot "${bot.name}" restart command sent successfully`,
                             life: 3000
                         });
-                        
+
                         // Refresh data after restart
                         setTimeout(async () => {
                             await this.loadRealTimeData();
                         }, 3000);
-                        
+
                     } catch (error) {
                         console.error('Error restarting bot (start phase):', error);
                         this.$toast.add({
@@ -592,8 +624,8 @@ export default {
                     } finally {
                         this.executingBots.delete(bot.id);
                     }
-                }, 2000);
-                
+                }, 3000);
+
             } catch (error) {
                 console.error('Error restarting bot (stop phase):', error);
                 this.$toast.add({
@@ -608,7 +640,7 @@ export default {
 
         async deleteBot(bot) {
             const confirmMessage = `Are you sure you want to delete bot "${bot.name}"? This action cannot be undone.`;
-            
+
             if (confirm(confirmMessage)) {
                 try {
                     if (bot.bot_type === 'external') {
@@ -616,7 +648,7 @@ export default {
                     } else {
                         await api.unsubscribeFromSharedBot(bot.id);
                     }
-                    
+
                     this.$toast.add({
                         severity: 'success',
                         summary: 'Success',
@@ -649,7 +681,7 @@ export default {
             this.$router.push(`/bots/${bot.id}/performance`);
         },
 
-        openBotSettings(bot) {
+        openBotSettings() {
             // TODO: Implement bot settings modal or page
             this.$toast.add({
                 severity: 'info',
@@ -740,24 +772,18 @@ export default {
 /* Bot Actions Styling */
 .bot-actions {
     display: flex;
-    flex-direction: column;
     gap: 0.5rem;
-    min-width: 280px;
+    min-width: 200px;
+    align-items: center;
 }
 
-.control-buttons {
+.primary-controls {
     display: flex;
     gap: 0.25rem;
     justify-content: flex-start;
 }
 
-.additional-actions {
-    display: flex;
-    gap: 0.25rem;
-    justify-content: flex-start;
-}
-
-.action-btn {
+.control-btn {
     border-radius: 6px !important;
     padding: 0.5rem !important;
     font-size: 0.875rem !important;
@@ -766,103 +792,136 @@ export default {
     transition: all 0.2s ease;
 }
 
-.action-btn.success {
+.control-btn.success {
     background: #22c55e !important;
     border-color: #22c55e !important;
     color: white !important;
 }
 
-.action-btn.success:hover:not(:disabled) {
+.control-btn.success:hover:not(:disabled) {
     background: #16a34a !important;
     border-color: #16a34a !important;
     transform: translateY(-1px);
 }
 
-.action-btn.warning {
-    background: #f59e0b !important;
-    border-color: #f59e0b !important;
-    color: white !important;
-}
-
-.action-btn.warning:hover:not(:disabled) {
-    background: #d97706 !important;
-    border-color: #d97706 !important;
-    transform: translateY(-1px);
-}
-
-.action-btn.danger {
+.control-btn.danger {
     background: #ef4444 !important;
     border-color: #ef4444 !important;
     color: white !important;
 }
 
-.action-btn.danger:hover:not(:disabled) {
+.control-btn.danger:hover:not(:disabled) {
     background: #dc2626 !important;
     border-color: #dc2626 !important;
     transform: translateY(-1px);
 }
 
-.action-btn.info {
+.control-btn.info {
     background: #3b82f6 !important;
     border-color: #3b82f6 !important;
     color: white !important;
 }
 
-.action-btn.info:hover:not(:disabled) {
+.control-btn.info:hover:not(:disabled) {
     background: #2563eb !important;
     border-color: #2563eb !important;
     transform: translateY(-1px);
 }
 
-.action-btn.secondary {
+.control-btn.secondary {
     background: #6b7280 !important;
     border-color: #6b7280 !important;
     color: white !important;
 }
 
-.action-btn.secondary:hover:not(:disabled) {
+.control-btn.secondary:hover:not(:disabled) {
     background: #4b5563 !important;
     border-color: #4b5563 !important;
     transform: translateY(-1px);
 }
 
-.action-btn.danger-outline {
-    background: transparent !important;
-    border-color: #ef4444 !important;
-    color: #ef4444 !important;
-}
-
-.action-btn.danger-outline:hover:not(:disabled) {
-    background: #ef4444 !important;
-    color: white !important;
-    transform: translateY(-1px);
-}
-
-.action-btn:disabled {
+.control-btn:disabled {
     opacity: 0.5 !important;
     cursor: not-allowed !important;
     transform: none !important;
 }
 
 .actions-column {
-    min-width: 300px;
+    min-width: 200px;
+}
+
+/* SplitButton Styling */
+:deep(.p-splitbutton) {
+    height: 2.5rem;
+}
+
+:deep(.p-splitbutton .p-button) {
+    min-width: 2.5rem !important;
+    border-radius: 6px !important;
+    padding: 0.5rem !important;
+    font-size: 0.875rem !important;
+    transition: all 0.2s ease !important;
+}
+
+:deep(.p-splitbutton .p-button:first-child) {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+:deep(.p-splitbutton .p-button:last-child) {
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.3) !important;
+    min-width: 1.5rem !important;
+    padding: 0.5rem 0.375rem !important;
+}
+
+:deep(.p-splitbutton.control-btn.secondary .p-button) {
+    background: #6b7280 !important;
+    border-color: #6b7280 !important;
+    color: white !important;
+}
+
+:deep(.p-splitbutton.control-btn.secondary .p-button:hover:not(:disabled)) {
+    background: #4b5563 !important;
+    border-color: #4b5563 !important;
+    transform: translateY(-1px);
+}
+
+:deep(.p-splitbutton.control-btn.secondary .p-button:disabled) {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+}
+
+/* Menu item danger styling */
+:deep(.p-menuitem-danger .p-menuitem-link) {
+    color: #ef4444 !important;
+}
+
+:deep(.p-menuitem-danger .p-menuitem-link:hover) {
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .bot-actions {
-        min-width: 200px;
+        min-width: 160px;
     }
-    
-    .control-buttons,
-    .additional-actions {
+
+    .primary-controls {
         flex-wrap: wrap;
     }
-    
-    .action-btn {
+
+    .control-btn {
         min-width: 2rem;
         height: 2rem;
         padding: 0.25rem !important;
+    }
+
+    .actions-column {
+        min-width: 180px;
     }
 }
 </style>
