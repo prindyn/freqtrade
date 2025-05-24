@@ -72,6 +72,7 @@
             </div>
         </div>
 
+
         <!-- Bots Table -->
         <div class="bot-table-container">
             <div class="flex justify-content-between align-items-center mb-3">
@@ -225,6 +226,15 @@ export default {
         };
     },
     async mounted() {
+        // Ensure auth header is set
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            console.log('Setting auth header with token:', token.substring(0, 10) + '...');
+            api.setAuthHeader(token);
+        } else {
+            console.warn('No auth token found in localStorage');
+        }
+        
         await this.loadBots();
         this.initWebSocket();
     },
@@ -237,43 +247,93 @@ export default {
         async loadBots() {
             this.loading = true;
             try {
+                console.log('Loading bots...');
+                
                 // Load external bots (primary) and shared bots
                 const [externalBotsResponse, sharedBotsResponse] = await Promise.all([
-                    api.getExternalBots().catch(() => ({ data: [] })),
-                    api.getMySharedBotSubscriptions().catch(() => ({ data: [] }))
+                    api.getExternalBots().catch(err => {
+                        console.error('Error loading external bots:', err);
+                        return { data: [] };
+                    }),
+                    api.getMySharedBotSubscriptions().catch(err => {
+                        console.error('Error loading shared bots:', err);
+                        return { data: [] };
+                    })
                 ]);
 
+                console.log('External bots response:', externalBotsResponse);
+                console.log('Shared bots response:', sharedBotsResponse);
+
                 // Process external bots data
-                const externalBots = (externalBotsResponse.data || []).map(bot => ({
-                    ...bot,
-                    bot_type: 'external',
-                    bot_id: bot.id,
-                    name: bot.name || bot.api_url,
-                    status: bot.status || 'unknown'
-                }));
+                const externalBots = (externalBotsResponse.data || []).map(bot => {
+                    console.log('Processing external bot:', bot);
+                    return {
+                        ...bot,
+                        bot_type: 'external',
+                        bot_id: bot.id,
+                        name: bot.name || bot.api_url || `Bot ${bot.id}`,
+                        status: bot.status || 'unknown',
+                        details: {
+                            created_at: bot.created_at,
+                            host_port: bot.api_url ? (function() {
+                                try {
+                                    return new URL(bot.api_url).port || new URL(bot.api_url).hostname;
+                                } catch (e) {
+                                    return bot.api_url;
+                                }
+                            })() : 'N/A',
+                            api_url: bot.api_url
+                        }
+                    };
+                });
 
                 // Process shared bots data
-                const sharedBots = (sharedBotsResponse.data || []).map(bot => ({
-                    ...bot,
-                    bot_type: 'shared',
-                    bot_id: bot.id,
-                    status: bot.status || 'unknown'
-                }));
+                const sharedBots = (sharedBotsResponse.data || []).map(bot => {
+                    console.log('Processing shared bot:', bot);
+                    return {
+                        ...bot,
+                        bot_type: 'shared',
+                        bot_id: bot.id,
+                        name: bot.name || `Shared Bot ${bot.id}`,
+                        status: bot.status || 'unknown',
+                        details: {
+                            created_at: bot.created_at,
+                            host_port: 'N/A'
+                        }
+                    };
+                });
 
                 // Combine both types
                 this.bots = [...externalBots, ...sharedBots];
+                console.log('Combined bots:', this.bots);
 
                 // Load real-time data for external bots
-                await this.loadRealTimeData();
+                if (externalBots.length > 0) {
+                    await this.loadRealTimeData();
+                }
                 
                 this.updateStats();
+                
+                // Show success message if bots were loaded
+                if (this.bots.length > 0) {
+                    console.log(`Successfully loaded ${this.bots.length} bots`);
+                } else {
+                    console.log('No bots found');
+                    this.$toast.add({
+                        severity: 'info',
+                        summary: 'No Bots',
+                        detail: 'No connected bots found. Connect a bot to get started.',
+                        life: 5000
+                    });
+                }
+                
             } catch (error) {
                 console.error('Error loading bots:', error);
                 this.$toast.add({
                     severity: 'error',
                     summary: 'Error',
-                    detail: 'Failed to load bots',
-                    life: 3000
+                    detail: `Failed to load bots: ${error.message}`,
+                    life: 5000
                 });
             } finally {
                 this.loading = false;
@@ -283,13 +343,25 @@ export default {
         async loadRealTimeData() {
             // Load real-time data for each external bot
             const externalBots = this.bots.filter(bot => bot.bot_type === 'external');
+            console.log(`Loading real-time data for ${externalBots.length} external bots...`);
             
             for (const bot of externalBots) {
                 try {
+                    console.log(`Loading data for bot ${bot.id} (${bot.name})...`);
+                    
                     const [statusResponse, performanceResponse] = await Promise.all([
-                        api.getBotStatus(bot.id).catch(() => null),
-                        api.getBotPerformance(bot.id).catch(() => null)
+                        api.getBotStatus(bot.id).catch(err => {
+                            console.warn(`Failed to get status for bot ${bot.id}:`, err);
+                            return null;
+                        }),
+                        api.getBotPerformance(bot.id).catch(err => {
+                            console.warn(`Failed to get performance for bot ${bot.id}:`, err);
+                            return null;
+                        })
                     ]);
+                    
+                    console.log(`Bot ${bot.id} status response:`, statusResponse);
+                    console.log(`Bot ${bot.id} performance response:`, performanceResponse);
                     
                     this.realTimeData[bot.id] = {
                         status: statusResponse?.data || {},
@@ -298,6 +370,7 @@ export default {
                     
                     // Update bot status with real data
                     if (statusResponse?.data?.status) {
+                        console.log(`Updating bot ${bot.id} status from '${bot.status}' to '${statusResponse.data.status}'`);
                         bot.status = statusResponse.data.status;
                     }
                     
@@ -305,6 +378,8 @@ export default {
                     console.error(`Error loading data for bot ${bot.id}:`, error);
                 }
             }
+            
+            console.log('Real-time data loading complete. Updated bots:', this.bots);
         },
 
         async refreshBots() {

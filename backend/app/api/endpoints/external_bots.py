@@ -22,6 +22,61 @@ router = APIRouter()
 external_bot_manager = ExternalBotManager()
 
 
+@router.get("", response_model=List[BotResponse])
+async def list_external_bots(
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """
+    Get all external bots for the current user/tenant
+    """
+    logger.info(
+        "User requesting external bots list",
+        extra={
+            "event_type": "external_bots_list_request",
+            "user_id": str(current_user.id),
+            "tenant_id": current_user.tenant_id,
+        }
+    )
+    
+    # Get all external bots for this tenant
+    db_bots = (
+        db.query(models_bot.Bot)
+        .filter(
+            models_bot.Bot.tenant_id == current_user.tenant_id,
+            models_bot.Bot.bot_type == "external",
+        )
+        .all()
+    )
+    
+    bots_response = []
+    for db_bot in db_bots:
+        bots_response.append(BotResponse(
+            id=db_bot.id,
+            bot_id=db_bot.bot_id,
+            tenant_id=db_bot.tenant_id,
+            bot_type=db_bot.bot_type,
+            name=db_bot.name,
+            description=db_bot.description,
+            status=db_bot.status,
+            api_url=db_bot.api_url,
+            created_at=db_bot.created_at,
+            updated_at=db_bot.updated_at,
+        ))
+    
+    logger.info(
+        f"Returning {len(bots_response)} external bots for user",
+        extra={
+            "event_type": "external_bots_list_response",
+            "user_id": str(current_user.id),
+            "tenant_id": current_user.tenant_id,
+            "bot_count": len(bots_response),
+        }
+    )
+    
+    return bots_response
+
+
 @router.post("/test-connection")
 async def test_bot_connection(
     connection_test: BotConnectionTest,
