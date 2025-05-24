@@ -1,9 +1,9 @@
 import requests
 import asyncio
 import time
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 from datetime import datetime
-import json
+import base64
 
 from app.core.logging import get_logger, log_external_api_call
 
@@ -20,13 +20,25 @@ class ExternalBotManager:
         # Set both connect and read timeouts
         self.timeout = (5, 10)  # (connect_timeout, read_timeout)
     
-    def test_bot_connection(self, api_url: str, api_token: str) -> Dict:
+    def _get_auth_args(self, auth_method: str, api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
+        """Helper method to prepare authentication arguments for method calls"""
+        return {
+            "auth_method": auth_method,
+            "api_token": api_token,
+            "username": username,
+            "password": password
+        }
+    
+    def test_bot_connection(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """
         Test connection to an external trading bot
         
         Args:
             api_url: Bot's API URL (e.g., "http://192.168.1.100:8080")
-            api_token: Bot's API authentication token
+            auth_method: Authentication method ('token' or 'basic')
+            api_token: Bot's API authentication token (for token auth)
+            username: Username (for basic auth)
+            password: Password (for basic auth)
             
         Returns:
             Dict with connection status and bot info
@@ -43,10 +55,21 @@ class ExternalBotManager:
         )
         
         try:
-            headers = {
-                'Authorization': f'Bearer {api_token}',
-                'Content-Type': 'application/json'
-            }
+            headers = {'Content-Type': 'application/json'}
+            
+            # Set authentication headers based on method
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
+            else:
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": f"Unsupported auth method: {auth_method}",
+                    "message": "Invalid authentication method"
+                }
             
             # Test basic connectivity with /api/v1/ping
             ping_start = time.time()
@@ -189,15 +212,23 @@ class ExternalBotManager:
                 "message": "Unexpected error during connection test"
             }
     
-    def get_bot_status(self, api_url: str, api_token: str) -> Dict:
+    def get_bot_status(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """Get current status of an external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             response = self.session.get(
                 f"{api_url}/api/v1/status",
-                headers=headers
+                headers=headers,
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -220,16 +251,24 @@ class ExternalBotManager:
                 "message": "Error getting bot status"
             }
     
-    def get_bot_performance(self, api_url: str, api_token: str) -> Dict:
+    def get_bot_performance(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """Get performance metrics from external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             # Get performance data
             response = self.session.get(
                 f"{api_url}/api/v1/performance",
-                headers=headers
+                headers=headers,
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -252,16 +291,24 @@ class ExternalBotManager:
                 "message": "Error getting performance data"
             }
     
-    def get_bot_trades(self, api_url: str, api_token: str, limit: int = 50) -> Dict:
+    def get_bot_trades(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None, limit: int = 50) -> Dict:
         """Get trade history from external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             response = self.session.get(
                 f"{api_url}/api/v1/trades",
                 headers=headers,
-                params={'limit': limit}
+                params={'limit': limit},
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -284,15 +331,23 @@ class ExternalBotManager:
                 "message": "Error getting trades"
             }
     
-    def start_bot(self, api_url: str, api_token: str) -> Dict:
+    def start_bot(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """Start an external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             response = self.session.post(
                 f"{api_url}/api/v1/start",
-                headers=headers
+                headers=headers,
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -315,15 +370,23 @@ class ExternalBotManager:
                 "message": "Error starting bot"
             }
     
-    def stop_bot(self, api_url: str, api_token: str) -> Dict:
+    def stop_bot(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """Stop an external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             response = self.session.post(
                 f"{api_url}/api/v1/stop",
-                headers=headers
+                headers=headers,
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -346,16 +409,24 @@ class ExternalBotManager:
                 "message": "Error stopping bot"
             }
     
-    def get_bot_logs(self, api_url: str, api_token: str, lines: int = 100) -> Dict:
+    def get_bot_logs(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None, lines: int = 100) -> Dict:
         """Get logs from external bot"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             response = self.session.get(
                 f"{api_url}/api/v1/logs",
                 headers=headers,
-                params={'lines': lines}
+                params={'lines': lines},
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -378,17 +449,24 @@ class ExternalBotManager:
                 "message": "Error getting logs"
             }
     
-    async def ping_bot(self, api_url: str, api_token: str) -> Dict:
+    async def ping_bot(self, api_url: str, auth_method: str = "token", api_token: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> Dict:
         """Async ping to check bot health"""
         try:
             api_url = api_url.rstrip('/')
-            headers = {'Authorization': f'Bearer {api_token}'}
+            headers = {}
+            
+            # Set authentication headers
+            if auth_method == "token":
+                headers['Authorization'] = f'Bearer {api_token}'
+            elif auth_method == "basic":
+                credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+                headers['Authorization'] = f'Basic {credentials}'
             
             # Use asyncio to make this non-blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
-                lambda: self.session.get(f"{api_url}/api/v1/ping", headers=headers)
+                lambda: self.session.get(f"{api_url}/api/v1/ping", headers=headers, timeout=self.timeout)
             )
             
             return {

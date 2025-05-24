@@ -3,7 +3,7 @@
         <div class="connect-bot-card p-6 border-round-xl shadow-8 w-full max-w-35rem">
             <div class="text-center mb-6">
                 <div class="text-900 text-3xl font-medium mb-2">Connect Your Bot</div>
-                <div class="text-600 font-medium">Connect your FreqTrade bot running on your own server</div>
+                <div class="text-600 font-medium">Connect your trading bot running on your own server</div>
             </div>
             
             <form @submit.prevent="connectBot" class="flex flex-column gap-4">
@@ -40,10 +40,36 @@
                         :class="{ 'p-invalid': errors.api_url }"
                     />
                     <small v-if="errors.api_url" class="p-error">{{ errors.api_url }}</small>
-                    <small class="text-600">The URL where your FreqTrade bot's REST API is accessible</small>
+                    <small class="text-600">The URL where your trading bot's REST API is accessible</small>
                 </div>
                 
+                <!-- Authentication Method Selection -->
                 <div class="flex flex-column gap-2">
+                    <label class="text-900 font-medium">Authentication Method</label>
+                    <div class="flex gap-4">
+                        <div class="flex align-items-center">
+                            <RadioButton 
+                                id="auth_token" 
+                                v-model="botData.auth_method" 
+                                value="token" 
+                                name="auth_method"
+                            />
+                            <label for="auth_token" class="ml-2">API Token</label>
+                        </div>
+                        <div class="flex align-items-center">
+                            <RadioButton 
+                                id="auth_basic" 
+                                v-model="botData.auth_method" 
+                                value="basic" 
+                                name="auth_method"
+                            />
+                            <label for="auth_basic" class="ml-2">Username & Password</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Token Authentication Fields -->
+                <div v-if="botData.auth_method === 'token'" class="flex flex-column gap-2">
                     <label for="apiToken" class="text-900 font-medium">API Token</label>
                     <Password 
                         id="apiToken" 
@@ -56,7 +82,37 @@
                         :class="{ 'p-invalid': errors.api_token }"
                     />
                     <small v-if="errors.api_token" class="p-error">{{ errors.api_token }}</small>
-                    <small class="text-600">Found in your FreqTrade bot's configuration file</small>
+                    <small class="text-600">Found in your trading bot's configuration file</small>
+                </div>
+                
+                <!-- Basic Authentication Fields -->
+                <div v-if="botData.auth_method === 'basic'" class="flex flex-column gap-4">
+                    <div class="flex flex-column gap-2">
+                        <label for="username" class="text-900 font-medium">Username</label>
+                        <InputText 
+                            id="username" 
+                            v-model="botData.username" 
+                            placeholder="Bot username"
+                            class="w-full p-3 border-round-lg"
+                            :class="{ 'p-invalid': errors.username }"
+                        />
+                        <small v-if="errors.username" class="p-error">{{ errors.username }}</small>
+                    </div>
+                    
+                    <div class="flex flex-column gap-2">
+                        <label for="password" class="text-900 font-medium">Password</label>
+                        <Password 
+                            id="password" 
+                            v-model="botData.password" 
+                            placeholder="Bot password"
+                            :feedback="false"
+                            :toggleMask="true"
+                            class="w-full"
+                            inputClass="p-3 border-round-lg w-full"
+                            :class="{ 'p-invalid': errors.password }"
+                        />
+                        <small v-if="errors.password" class="p-error">{{ errors.password }}</small>
+                    </div>
                 </div>
                 
                 <!-- Test Connection Button -->
@@ -119,8 +175,13 @@
             <div class="help-section mt-6 pt-4 border-top-1 surface-border">
                 <h4 class="text-lg font-medium text-900 mb-3">Need Help?</h4>
                 <div class="text-600 line-height-3">
-                    <p class="mb-2"><strong>API URL:</strong> The address where your FreqTrade bot is running (e.g., http://192.168.1.100:8080)</p>
-                    <p class="mb-2"><strong>API Token:</strong> Enable REST API in your bot's config and use the jwt_secret_key value</p>
+                    <p class="mb-2"><strong>API URL:</strong> The address where your trading bot is running (e.g., http://192.168.1.100:8080)</p>
+                    <div v-if="botData.auth_method === 'token'">
+                        <p class="mb-2"><strong>API Token:</strong> Enable REST API in your bot's config and use the jwt_secret_key value</p>
+                    </div>
+                    <div v-if="botData.auth_method === 'basic'">
+                        <p class="mb-2"><strong>Username/Password:</strong> Use the credentials configured for your bot's REST API</p>
+                    </div>
                     <p class="mb-0"><strong>Firewall:</strong> Make sure the bot's port is accessible from this platform</p>
                 </div>
             </div>
@@ -134,6 +195,7 @@ import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
 import Message from 'primevue/message';
+import RadioButton from 'primevue/radiobutton';
 import api from '@/services/api';
 
 export default {
@@ -143,7 +205,18 @@ export default {
         Textarea,
         Password,
         Button,
-        Message
+        Message,
+        RadioButton
+    },
+    created() {
+        // Ensure authentication token is set
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            api.setAuthHeader(token);
+        } else {
+            // Redirect to login if no token
+            this.$router.push({ name: 'login' });
+        }
     },
     data() {
         return {
@@ -151,7 +224,10 @@ export default {
                 name: '',
                 description: '',
                 api_url: '',
-                api_token: ''
+                auth_method: 'token',
+                api_token: '',
+                username: '',
+                password: ''
             },
             errors: {},
             testingConnection: false,
@@ -175,8 +251,18 @@ export default {
                 this.errors.api_url = 'Please enter a valid URL (e.g., http://192.168.1.100:8080)';
             }
             
-            if (!this.botData.api_token.trim()) {
-                this.errors.api_token = 'API token is required';
+            // Validate authentication fields based on method
+            if (this.botData.auth_method === 'token') {
+                if (!this.botData.api_token.trim()) {
+                    this.errors.api_token = 'API token is required';
+                }
+            } else if (this.botData.auth_method === 'basic') {
+                if (!this.botData.username.trim()) {
+                    this.errors.username = 'Username is required';
+                }
+                if (!this.botData.password.trim()) {
+                    this.errors.password = 'Password is required';
+                }
             }
             
             return Object.keys(this.errors).length === 0;
@@ -201,10 +287,19 @@ export default {
             this.error = null;
             
             try {
-                const response = await api.testBotConnection({
+                const connectionData = {
                     api_url: this.botData.api_url,
-                    api_token: this.botData.api_token
-                });
+                    auth_method: this.botData.auth_method
+                };
+                
+                if (this.botData.auth_method === 'token') {
+                    connectionData.api_token = this.botData.api_token;
+                } else {
+                    connectionData.username = this.botData.username;
+                    connectionData.password = this.botData.password;
+                }
+                
+                const response = await api.testBotConnection(connectionData);
                 
                 this.connectionStatus = {
                     success: response.data.success,
@@ -236,7 +331,22 @@ export default {
             this.error = null;
             
             try {
-                const response = await api.connectExternalBot(this.botData);
+                // Prepare data based on auth method
+                const connectData = {
+                    name: this.botData.name,
+                    description: this.botData.description,
+                    api_url: this.botData.api_url,
+                    auth_method: this.botData.auth_method
+                };
+                
+                if (this.botData.auth_method === 'token') {
+                    connectData.api_token = this.botData.api_token;
+                } else {
+                    connectData.username = this.botData.username;
+                    connectData.password = this.botData.password;
+                }
+                
+                const response = await api.connectExternalBot(connectData);
                 
                 this.successMessage = `Successfully connected ${this.botData.name}!`;
                 
