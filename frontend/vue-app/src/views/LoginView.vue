@@ -101,7 +101,7 @@ export default {
                 const token = response.data.access_token;
                 localStorage.setItem('authToken', token);
                 api.setAuthHeader(token);
-                this.$router.push({ name: 'bots' });
+                this.$router.push({ name: 'dashboard' });
             } catch (err) {
                 if (err.response && err.response.data && err.response.data.detail) {
                     this.error = err.response.data.detail;

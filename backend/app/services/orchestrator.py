@@ -1,5 +1,9 @@
-import docker
-import os
+# TEMPORARILY DISABLED - ORCHESTRATOR SERVICE
+# This file has been temporarily disabled for development/testing purposes
+# To re-enable, uncomment the imports and class definition below
+
+# import docker
+# import os
 import logging
 import json
 from pathlib import Path
@@ -12,12 +16,15 @@ logger = logging.getLogger(__name__)
 
 class FreqtradeOrchestrator:
     def __init__(self):
-        try:
-            self.client = docker.from_env()
-            self.next_available_port = 8081
-        except docker.errors.DockerException as e:
-            logger.error(f"Failed to initialize Docker client: {e}")
-            raise
+        # TEMPORARILY DISABLED - Docker functionality commented out
+        logger.warning("FreqtradeOrchestrator is temporarily disabled")
+        self.next_available_port = 8081
+        # try:
+        #     self.client = docker.from_env()
+        #     self.next_available_port = 8081
+        # except docker.errors.DockerException as e:
+        #     logger.error(f"Failed to initialize Docker client: {e}")
+        #     raise
 
     def _get_next_available_port(self) -> int:
         # In a real-world scenario, you'd want a more robust port allocation mechanism

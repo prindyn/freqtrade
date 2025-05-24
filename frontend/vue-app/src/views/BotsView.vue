@@ -1,10 +1,16 @@
 <template>
     <div class="bots-view p-p-3"> <!-- Added PrimeVue padding class -->
         <h1>Manage Your Bots</h1>
-        <div class="controls p-d-flex p-jc-start p-mb-3"> <!-- PrimeFlex for layout -->
-            <Button @click="fetchBots" :loading="isLoading" class="p-button-info p-mr-2" icon="pi pi-refresh"
-                label="Refresh Bots" />
-            <Button @click="goToCreateBot" class="p-button-success" icon="pi pi-plus" label="Create New Bot" />
+        <div class="controls p-d-flex p-jc-between p-mb-3"> <!-- PrimeFlex for layout -->
+            <div class="p-d-flex p-jc-start">
+                <Button @click="fetchBots" :loading="isLoading" class="p-button-info p-mr-2" icon="pi pi-refresh"
+                    label="Refresh Bots" />
+                <Button @click="goToCreateBot" class="p-button-success p-mr-2" icon="pi pi-plus" label="Create New Bot" />
+            </div>
+            <div class="p-d-flex p-jc-end">
+                <Button @click="goToConnectBot" class="p-button-secondary p-mr-2" icon="pi pi-link" label="Connect Bot" />
+                <Button @click="goToMarketplace" class="p-button-primary" icon="pi pi-shopping-cart" label="Marketplace" />
+            </div>
         </div>
 
         <Message v-if="error" severity="error" :closable="true" @close="error = null" class="p-mb-3">
@@ -24,16 +30,35 @@
             <template #empty v-if="!isLoading && bots.length === 0">
                 No bots found for your account.
             </template>
-            <Column field="bot_id" header="Bot ID" :sortable="true" style="min-width:12rem"></Column>
+            <Column field="name" header="Bot Name" :sortable="true" style="min-width:12rem">
+                <template #body="slotProps">
+                    <div class="p-d-flex p-ai-center">
+                        <span class="p-mr-2">{{ slotProps.data.name || slotProps.data.bot_id }}</span>
+                        <Tag v-if="slotProps.data.bot_type === 'external'" value="External" severity="info" class="p-tag-sm" />
+                        <Tag v-else-if="slotProps.data.bot_type === 'shared'" value="Shared" severity="success" class="p-tag-sm" />
+                        <Tag v-else value="Platform" severity="warning" class="p-tag-sm" />
+                    </div>
+                </template>
+            </Column>
             <Column field="status" header="Status" :sortable="true" style="min-width:8rem">
                 <template #body="slotProps">
                     <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)" />
                 </template>
             </Column>
-            <Column field="details.host_port" header="Host Port" style="min-width:8rem">
+            <Column field="source" header="Source" style="min-width:10rem">
                 <template #body="slotProps">
-                    {{ slotProps.data.details && slotProps.data.details.host_port ? slotProps.data.details.host_port :
-                    'N/A' }}
+                    <div v-if="slotProps.data.bot_type === 'external'">
+                        <i class="pi pi-link p-mr-1"></i>
+                        {{ slotProps.data.api_url || 'External API' }}
+                    </div>
+                    <div v-else-if="slotProps.data.bot_type === 'shared'">
+                        <i class="pi pi-cloud p-mr-1"></i>
+                        {{ slotProps.data.config_template || 'Platform Managed' }}
+                    </div>
+                    <div v-else>
+                        <i class="pi pi-server p-mr-1"></i>
+                        {{ slotProps.data.details?.host_port || 'N/A' }}
+                    </div>
                 </template>
             </Column>
             <Column field="details.created_at" header="Created At" :sortable="true" style="min-width:12rem">
@@ -42,12 +67,16 @@
                         formatDate(slotProps.data.details.created_at) : 'N/A' }}
                 </template>
             </Column>
-            <Column header="Actions" style="min-width:14rem; text-align:center;">
+            <Column header="Actions" style="min-width:18rem; text-align:center;">
                 <template #body="slotProps">
-                    <Button icon="pi pi-align-justify" class="p-button-info p-button-sm p-mr-2"
-                        @click="openLogsModal(slotProps.data.bot_id)" v-tooltip.top="'View Logs'" />
+                    <Button v-if="canStartBot(slotProps.data)" icon="pi pi-play" class="p-button-success p-button-sm p-mr-1"
+                        @click="startBot(slotProps.data)" v-tooltip.top="'Start Bot'" :loading="slotProps.data._starting" />
+                    <Button v-if="canStopBot(slotProps.data)" icon="pi pi-stop" class="p-button-warning p-button-sm p-mr-1"
+                        @click="stopBot(slotProps.data)" v-tooltip.top="'Stop Bot'" :loading="slotProps.data._stopping" />
+                    <Button icon="pi pi-align-justify" class="p-button-info p-button-sm p-mr-1"
+                        @click="openLogsModal(slotProps.data)" v-tooltip.top="'View Logs'" />
                     <Button icon="pi pi-trash" class="p-button-danger p-button-sm"
-                        @click="confirmDeleteBot(slotProps.data.bot_id)" v-tooltip.top="'Delete Bot'" />
+                        @click="confirmDeleteBot(slotProps.data)" v-tooltip.top="'Delete Bot'" />
                 </template>
             </Column>
         </DataTable>
@@ -121,8 +150,26 @@ export default {
             this.isLoading = true;
             this.error = null;
             try {
-                const response = await api.getBots(); // Changed from getBotsForTenant
-                this.bots = response.data;
+                // Fetch both platform bots and external bots
+                const [platformBotsResponse, externalBotsResponse] = await Promise.all([
+                    api.getBots().catch(() => ({ data: [] })),
+                    api.getExternalBots().catch(() => ({ data: [] }))
+                ]);
+                
+                // Combine and mark bot types
+                const platformBots = (platformBotsResponse.data || []).map(bot => ({
+                    ...bot,
+                    bot_type: bot.bot_type || 'platform',
+                    name: bot.name || bot.bot_id
+                }));
+                
+                const externalBots = (externalBotsResponse.data || []).map(bot => ({
+                    ...bot,
+                    bot_type: 'external',
+                    name: bot.name || bot.bot_id || 'External Bot'
+                }));
+                
+                this.bots = [...platformBots, ...externalBots];
             } catch (err) {
                 console.error('Error fetching bots:', err);
                 if (err.response && err.response.status === 404) {
@@ -143,13 +190,26 @@ export default {
         goToCreateBot() {
             this.$router.push({ name: 'create-bot' });
         },
-        async openLogsModal(botId) {
+        goToConnectBot() {
+            this.$router.push({ name: 'connect-bot' });
+        },
+        goToMarketplace() {
+            this.$router.push({ name: 'marketplace' });
+        },
+        async openLogsModal(bot) {
+            const botId = bot.bot_id || bot.id;
             this.selectedBotIdForLogs = botId;
             this.isLoadingLogs = true;
             this.showLogsModal = true;
             this.currentBotLogs = '';
             try {
-                const response = await api.getBotLogs(botId);
+                let response;
+                if (bot.bot_type === 'external') {
+                    response = await api.getExternalBotLogs(botId);
+                } else {
+                    response = await api.getBotLogs(botId);
+                }
+                
                 if (response.data && response.data.logs) {
                     this.currentBotLogs = response.data.logs;
                 } else if (response.data && response.data.message) {
@@ -172,22 +232,69 @@ export default {
             this.currentBotLogs = '';
             this.selectedBotIdForLogs = null;
         },
-        confirmDeleteBot(botId) {
-            // PrimeVue ConfirmDialog could be used here for a better UX
-            if (confirm(`Are you sure you want to delete bot ${botId}? This action cannot be undone.`)) {
-                this.deleteBot(botId);
+        confirmDeleteBot(bot) {
+            const botName = bot.name || bot.bot_id;
+            if (confirm(`Are you sure you want to delete bot "${botName}"? This action cannot be undone.`)) {
+                this.deleteBot(bot);
             }
         },
-        async deleteBot(botId) {
-            alert(`Deleting bot ${botId} (not implemented yet - API call needed).`);
-            // Example:
-            // try {
-            //   await api.deleteBot(botId); // Assuming deleteBot is added to api.js
-            //   this.fetchBots(); // Refresh list
-            // } catch (err) {
-            //   console.error('Error deleting bot:', err);
-            //   this.error = { message: `Failed to delete bot ${botId}: ${err.message || 'Unknown error'}`};
-            // }
+        async deleteBot(bot) {
+            const botId = bot.bot_id || bot.id;
+            try {
+                if (bot.bot_type === 'external') {
+                    await api.deleteExternalBot(botId);
+                } else {
+                    await api.deleteBot(botId);
+                }
+                this.fetchBots(); // Refresh list
+            } catch (err) {
+                console.error('Error deleting bot:', err);
+                this.error = { message: `Failed to delete bot: ${err.message || 'Unknown error'}` };
+            }
+        },
+        canStartBot(bot) {
+            const status = (bot.status || '').toLowerCase();
+            return !status.includes('running') && !bot._starting;
+        },
+        canStopBot(bot) {
+            const status = (bot.status || '').toLowerCase();
+            return status.includes('running') && !bot._stopping;
+        },
+        async startBot(bot) {
+            const botId = bot.bot_id || bot.id;
+            this.$set(bot, '_starting', true);
+            try {
+                if (bot.bot_type === 'external') {
+                    await api.startExternalBot(botId);
+                } else {
+                    await api.startBot(botId);
+                }
+                // Refresh the specific bot status
+                setTimeout(() => this.fetchBots(), 1000);
+            } catch (err) {
+                console.error('Error starting bot:', err);
+                this.error = { message: `Failed to start bot: ${err.message || 'Unknown error'}` };
+            } finally {
+                this.$set(bot, '_starting', false);
+            }
+        },
+        async stopBot(bot) {
+            const botId = bot.bot_id || bot.id;
+            this.$set(bot, '_stopping', true);
+            try {
+                if (bot.bot_type === 'external') {
+                    await api.stopExternalBot(botId);
+                } else {
+                    await api.stopBot(botId);
+                }
+                // Refresh the specific bot status
+                setTimeout(() => this.fetchBots(), 1000);
+            } catch (err) {
+                console.error('Error stopping bot:', err);
+                this.error = { message: `Failed to stop bot: ${err.message || 'Unknown error'}` };
+            } finally {
+                this.$set(bot, '_stopping', false);
+            }
         },
         formatDate(dateString) {
             if (!dateString) return 'N/A';

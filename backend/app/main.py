@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import (
     Session,
 )  # Only needed if get_db is defined here, which it is not anymore.
@@ -7,11 +8,23 @@ from sqlalchemy.orm import (
 from app.db import session as db_session
 from app.api.endpoints import auth as auth_router  # Import the auth router
 from app.api.endpoints import bots as bots_router  # Import the new bots router
+from app.api.endpoints import websocket as websocket_router  # Import WebSocket router
+from app.api.endpoints import external_bots as external_bots_router  # Import external bots router
+from app.api.endpoints import shared_bots as shared_bots_router  # Import shared bots router
 
 app = FastAPI(
     title="Freqtrade SaaS API",
     description="API for managing Freqtrade bot instances.",
     version="0.1.0",
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],  # Frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods including OPTIONS
+    allow_headers=["*"],  # Allow all headers
 )
 
 
@@ -33,6 +46,12 @@ async def root():
 app.include_router(auth_router.router, prefix="/api/v1/auth", tags=["Authentication"])
 # Include the new bots router
 app.include_router(bots_router.router, prefix="/api/v1/bots", tags=["Bots"])
+# Include external bots router
+app.include_router(external_bots_router.router, prefix="/api/v1/external-bots", tags=["External Bots"])
+# Include shared bots router
+app.include_router(shared_bots_router.router, prefix="/api/v1/shared-bots", tags=["Shared Bots"])
+# Include WebSocket router
+app.include_router(websocket_router.router, prefix="/api/v1", tags=["WebSocket"])
 
 
 # if __name__ == "__main__":
