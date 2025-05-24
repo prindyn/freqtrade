@@ -234,14 +234,14 @@ export default {
             try {
                 // Load both legacy bots and new types
                 const [botsResponse, sharedBotsResponse] = await Promise.all([
-                    api.getBots(),
+                    api.getBots().catch(() => ({ data: [] })),
                     api.getMySharedBotSubscriptions().catch(() => ({ data: [] }))
                 ]);
                 
-                // Combine both types
+                // Combine both types, ensuring data is always an array
                 this.bots = [
-                    ...botsResponse.data,
-                    ...sharedBotsResponse.data
+                    ...(botsResponse.data || []),
+                    ...(sharedBotsResponse.data || [])
                 ];
                 
                 this.updateStats();

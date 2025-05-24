@@ -26,14 +26,19 @@
         <main class="main-content container">
             <router-view />
         </main>
+        <Toast />
     </div>
 </template>
 
 <script>
 import api from '@/services/api'; // Import your API service
+import Toast from 'primevue/toast';
 
 export default {
     name: 'App',
+    components: {
+        Toast
+    },
     data() {
         return {
             isAuthenticated: false, // Reactive property

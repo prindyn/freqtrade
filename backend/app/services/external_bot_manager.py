@@ -15,7 +15,8 @@ class ExternalBotManager:
     
     def __init__(self):
         self.session = requests.Session()
-        self.session.timeout = 10  # 10 second timeout for API calls
+        # Set both connect and read timeouts
+        self.timeout = (5, 10)  # (connect_timeout, read_timeout)
     
     def test_bot_connection(self, api_url: str, api_token: str) -> Dict:
         """
@@ -40,14 +41,16 @@ class ExternalBotManager:
             # Test basic connectivity with /api/v1/ping
             response = self.session.get(
                 f"{api_url}/api/v1/ping",
-                headers=headers
+                headers=headers,
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
                 # Get bot status and info
                 status_response = self.session.get(
                     f"{api_url}/api/v1/status",
-                    headers=headers
+                    headers=headers,
+                    timeout=self.timeout
                 )
                 
                 if status_response.status_code == 200:
