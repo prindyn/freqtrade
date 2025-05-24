@@ -113,19 +113,70 @@
                     </template>
                 </Column>
 
-                <Column header="Actions">
+                <Column header="Actions" class="actions-column">
                     <template #body="slotProps">
-                        <div class="flex gap-2">
-                            <Button icon="pi pi-play" class="p-button-rounded p-button-text p-button-success"
-                                v-tooltip="'Start Bot'" @click="startBot(slotProps.data.bot_id)"
-                                :disabled="slotProps.data.status === 'running'" />
-                            <Button icon="pi pi-stop" class="p-button-rounded p-button-text p-button-warning"
-                                v-tooltip="'Stop Bot'" @click="stopBot(slotProps.data.bot_id)"
-                                :disabled="slotProps.data.status === 'stopped'" />
-                            <Button icon="pi pi-chart-line" class="p-button-rounded p-button-text p-button-info"
-                                v-tooltip="'View Performance'" @click="viewBotPerformance(slotProps.data.bot_id)" />
-                            <Button icon="pi pi-trash" class="p-button-rounded p-button-text p-button-danger"
-                                v-tooltip="'Delete Bot'" @click="deleteBot(slotProps.data.bot_id)" />
+                        <div class="bot-actions">
+                            <!-- Control Buttons -->
+                            <div class="control-buttons">
+                                <Button 
+                                    icon="pi pi-play" 
+                                    class="action-btn success"
+                                    v-tooltip="'Start Bot'" 
+                                    @click="startBot(slotProps.data)"
+                                    :disabled="slotProps.data.status === 'running' || isExecuting(slotProps.data.id)"
+                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'start'" />
+                                
+                                <Button 
+                                    icon="pi pi-pause" 
+                                    class="action-btn warning"
+                                    v-tooltip="'Pause Bot'" 
+                                    @click="pauseBot(slotProps.data)"
+                                    :disabled="slotProps.data.status !== 'running' || isExecuting(slotProps.data.id)"
+                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'pause'" />
+                                
+                                <Button 
+                                    icon="pi pi-stop" 
+                                    class="action-btn danger"
+                                    v-tooltip="'Stop Bot'" 
+                                    @click="stopBot(slotProps.data)"
+                                    :disabled="slotProps.data.status === 'stopped' || isExecuting(slotProps.data.id)"
+                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'stop'" />
+                                
+                                <Button 
+                                    icon="pi pi-refresh" 
+                                    class="action-btn info"
+                                    v-tooltip="'Restart Bot'" 
+                                    @click="restartBot(slotProps.data)"
+                                    :disabled="isExecuting(slotProps.data.id)"
+                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'restart'" />
+                            </div>
+                            
+                            <!-- Additional Actions -->
+                            <div class="additional-actions">
+                                <Button 
+                                    icon="pi pi-desktop" 
+                                    class="action-btn secondary"
+                                    v-tooltip="'Open Terminal'" 
+                                    @click="openTerminal(slotProps.data)" />
+                                
+                                <Button 
+                                    icon="pi pi-chart-line" 
+                                    class="action-btn info"
+                                    v-tooltip="'View Performance'" 
+                                    @click="viewBotPerformance(slotProps.data)" />
+                                
+                                <Button 
+                                    icon="pi pi-cog" 
+                                    class="action-btn secondary"
+                                    v-tooltip="'Bot Settings'" 
+                                    @click="openBotSettings(slotProps.data)" />
+                                
+                                <Button 
+                                    icon="pi pi-trash" 
+                                    class="action-btn danger-outline"
+                                    v-tooltip="'Delete Bot'" 
+                                    @click="deleteBot(slotProps.data)" />
+                            </div>
                         </div>
                     </template>
                 </Column>
@@ -167,7 +218,10 @@ export default {
                 totalProfit: 0,
                 activeTrades: 0
             },
-            websocket: null
+            websocket: null,
+            executingBots: new Set(), // Track which bots are currently executing commands
+            lastAction: null, // Track the last action for loading states
+            realTimeData: {} // Store real-time bot data
         };
     },
     async mounted() {
@@ -183,18 +237,35 @@ export default {
         async loadBots() {
             this.loading = true;
             try {
-                // Load both legacy bots and new types
-                const [botsResponse, sharedBotsResponse] = await Promise.all([
-                    api.getBots().catch(() => ({ data: [] })),
+                // Load external bots (primary) and shared bots
+                const [externalBotsResponse, sharedBotsResponse] = await Promise.all([
+                    api.getExternalBots().catch(() => ({ data: [] })),
                     api.getMySharedBotSubscriptions().catch(() => ({ data: [] }))
                 ]);
 
-                // Combine both types, ensuring data is always an array
-                this.bots = [
-                    ...(botsResponse.data || []),
-                    ...(sharedBotsResponse.data || [])
-                ];
+                // Process external bots data
+                const externalBots = (externalBotsResponse.data || []).map(bot => ({
+                    ...bot,
+                    bot_type: 'external',
+                    bot_id: bot.id,
+                    name: bot.name || bot.api_url,
+                    status: bot.status || 'unknown'
+                }));
 
+                // Process shared bots data
+                const sharedBots = (sharedBotsResponse.data || []).map(bot => ({
+                    ...bot,
+                    bot_type: 'shared',
+                    bot_id: bot.id,
+                    status: bot.status || 'unknown'
+                }));
+
+                // Combine both types
+                this.bots = [...externalBots, ...sharedBots];
+
+                // Load real-time data for external bots
+                await this.loadRealTimeData();
+                
                 this.updateStats();
             } catch (error) {
                 console.error('Error loading bots:', error);
@@ -206,6 +277,33 @@ export default {
                 });
             } finally {
                 this.loading = false;
+            }
+        },
+
+        async loadRealTimeData() {
+            // Load real-time data for each external bot
+            const externalBots = this.bots.filter(bot => bot.bot_type === 'external');
+            
+            for (const bot of externalBots) {
+                try {
+                    const [statusResponse, performanceResponse] = await Promise.all([
+                        api.getBotStatus(bot.id).catch(() => null),
+                        api.getBotPerformance(bot.id).catch(() => null)
+                    ]);
+                    
+                    this.realTimeData[bot.id] = {
+                        status: statusResponse?.data || {},
+                        performance: performanceResponse?.data || {}
+                    };
+                    
+                    // Update bot status with real data
+                    if (statusResponse?.data?.status) {
+                        bot.status = statusResponse.data.status;
+                    }
+                    
+                } catch (error) {
+                    console.error(`Error loading data for bot ${bot.id}:`, error);
+                }
             }
         },
 
@@ -237,56 +335,217 @@ export default {
             return new Date(dateString).toLocaleDateString();
         },
 
-        async startBot(botId) {
+        // Helper method to check if bot is executing a command
+        isExecuting(botId) {
+            return this.executingBots.has(botId);
+        },
+
+        // Bot control methods with real server communication
+        async startBot(bot) {
+            if (bot.bot_type !== 'external') {
+                this.$toast.add({
+                    severity: 'warn',
+                    summary: 'Not Available',
+                    detail: 'Start command is only available for external bots',
+                    life: 3000
+                });
+                return;
+            }
+
+            this.executingBots.add(bot.id);
+            this.lastAction = 'start';
+            
             try {
-                await api.startBot(botId);
+                await api.startExternalBot(bot.id);
                 this.$toast.add({
                     severity: 'success',
                     summary: 'Success',
-                    detail: `Bot ${botId} start command sent`,
+                    detail: `Bot "${bot.name}" start command sent`,
                     life: 3000
                 });
-                await this.loadBots();
+                
+                // Update local status immediately
+                bot.status = 'starting';
+                
+                // Refresh data after a delay
+                setTimeout(async () => {
+                    await this.loadRealTimeData();
+                }, 2000);
+                
             } catch (error) {
                 console.error('Error starting bot:', error);
                 this.$toast.add({
                     severity: 'error',
                     summary: 'Error',
-                    detail: 'Failed to start bot',
+                    detail: error.response?.data?.detail || 'Failed to start bot',
                     life: 3000
                 });
+            } finally {
+                this.executingBots.delete(bot.id);
             }
         },
 
-        async stopBot(botId) {
+        async pauseBot(bot) {
+            if (bot.bot_type !== 'external') {
+                this.$toast.add({
+                    severity: 'warn',
+                    summary: 'Not Available',
+                    detail: 'Pause command is only available for external bots',
+                    life: 3000
+                });
+                return;
+            }
+
+            this.executingBots.add(bot.id);
+            this.lastAction = 'pause';
+            
             try {
-                await api.stopBot(botId);
+                // Send pause command via terminal command
+                await api.executeTerminalCommand(bot.id, 'pause', []);
+                this.$toast.add({
+                    severity: 'info',
+                    summary: 'Success',
+                    detail: `Bot "${bot.name}" pause command sent`,
+                    life: 3000
+                });
+                
+                // Update local status
+                bot.status = 'paused';
+                
+            } catch (error) {
+                console.error('Error pausing bot:', error);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: error.response?.data?.detail || 'Failed to pause bot',
+                    life: 3000
+                });
+            } finally {
+                this.executingBots.delete(bot.id);
+            }
+        },
+
+        async stopBot(bot) {
+            if (bot.bot_type !== 'external') {
+                this.$toast.add({
+                    severity: 'warn',
+                    summary: 'Not Available',
+                    detail: 'Stop command is only available for external bots',
+                    life: 3000
+                });
+                return;
+            }
+
+            this.executingBots.add(bot.id);
+            this.lastAction = 'stop';
+            
+            try {
+                await api.stopExternalBot(bot.id);
                 this.$toast.add({
                     severity: 'success',
                     summary: 'Success',
-                    detail: `Bot ${botId} stop command sent`,
+                    detail: `Bot "${bot.name}" stop command sent`,
                     life: 3000
                 });
-                await this.loadBots();
+                
+                // Update local status immediately
+                bot.status = 'stopping';
+                
+                // Refresh data after a delay
+                setTimeout(async () => {
+                    await this.loadRealTimeData();
+                }, 2000);
+                
             } catch (error) {
                 console.error('Error stopping bot:', error);
                 this.$toast.add({
                     severity: 'error',
                     summary: 'Error',
-                    detail: 'Failed to stop bot',
+                    detail: error.response?.data?.detail || 'Failed to stop bot',
                     life: 3000
                 });
+            } finally {
+                this.executingBots.delete(bot.id);
             }
         },
 
-        async deleteBot(botId) {
-            if (confirm(`Are you sure you want to delete bot ${botId}?`)) {
+        async restartBot(bot) {
+            if (bot.bot_type !== 'external') {
+                this.$toast.add({
+                    severity: 'warn',
+                    summary: 'Not Available',
+                    detail: 'Restart command is only available for external bots',
+                    life: 3000
+                });
+                return;
+            }
+
+            this.executingBots.add(bot.id);
+            this.lastAction = 'restart';
+            
+            try {
+                // Stop first, then start
+                await api.stopExternalBot(bot.id);
+                bot.status = 'stopping';
+                
+                // Wait a moment, then start
+                setTimeout(async () => {
+                    try {
+                        await api.startExternalBot(bot.id);
+                        bot.status = 'starting';
+                        
+                        this.$toast.add({
+                            severity: 'success',
+                            summary: 'Success',
+                            detail: `Bot "${bot.name}" restart command sent`,
+                            life: 3000
+                        });
+                        
+                        // Refresh data after restart
+                        setTimeout(async () => {
+                            await this.loadRealTimeData();
+                        }, 3000);
+                        
+                    } catch (error) {
+                        console.error('Error restarting bot (start phase):', error);
+                        this.$toast.add({
+                            severity: 'error',
+                            summary: 'Error',
+                            detail: 'Failed to restart bot (start phase)',
+                            life: 3000
+                        });
+                    } finally {
+                        this.executingBots.delete(bot.id);
+                    }
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error restarting bot (stop phase):', error);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: error.response?.data?.detail || 'Failed to restart bot (stop phase)',
+                    life: 3000
+                });
+                this.executingBots.delete(bot.id);
+            }
+        },
+
+        async deleteBot(bot) {
+            const confirmMessage = `Are you sure you want to delete bot "${bot.name}"? This action cannot be undone.`;
+            
+            if (confirm(confirmMessage)) {
                 try {
-                    await api.deleteBot(botId);
+                    if (bot.bot_type === 'external') {
+                        await api.deleteExternalBot(bot.id);
+                    } else {
+                        await api.unsubscribeFromSharedBot(bot.id);
+                    }
+                    
                     this.$toast.add({
                         severity: 'success',
                         summary: 'Success',
-                        detail: `Bot ${botId} deleted successfully`,
+                        detail: `Bot "${bot.name}" deleted successfully`,
                         life: 3000
                     });
                     await this.loadBots();
@@ -295,16 +554,34 @@ export default {
                     this.$toast.add({
                         severity: 'error',
                         summary: 'Error',
-                        detail: 'Failed to delete bot',
+                        detail: error.response?.data?.detail || 'Failed to delete bot',
                         life: 3000
                     });
                 }
             }
         },
 
-        viewBotPerformance(botId) {
-            // TODO: Navigate to bot performance view
-            this.$router.push(`/bots/${botId}/performance`);
+        openTerminal(bot) {
+            // Navigate to terminal with pre-selected bot
+            this.$router.push({
+                name: 'terminal',
+                query: { bot: bot.id }
+            });
+        },
+
+        viewBotPerformance(bot) {
+            // Navigate to bot performance view or show modal
+            this.$router.push(`/bots/${bot.id}/performance`);
+        },
+
+        openBotSettings(bot) {
+            // TODO: Implement bot settings modal or page
+            this.$toast.add({
+                severity: 'info',
+                summary: 'Coming Soon',
+                detail: 'Bot settings feature is coming soon',
+                life: 3000
+            });
         },
 
         showConnectBotModal() {
@@ -383,5 +660,134 @@ export default {
     background: #f8f9fa;
     color: #495057;
     font-weight: 600;
+}
+
+/* Bot Actions Styling */
+.bot-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 280px;
+}
+
+.control-buttons {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-start;
+}
+
+.additional-actions {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: flex-start;
+}
+
+.action-btn {
+    border-radius: 6px !important;
+    padding: 0.5rem !important;
+    font-size: 0.875rem !important;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    transition: all 0.2s ease;
+}
+
+.action-btn.success {
+    background: #22c55e !important;
+    border-color: #22c55e !important;
+    color: white !important;
+}
+
+.action-btn.success:hover:not(:disabled) {
+    background: #16a34a !important;
+    border-color: #16a34a !important;
+    transform: translateY(-1px);
+}
+
+.action-btn.warning {
+    background: #f59e0b !important;
+    border-color: #f59e0b !important;
+    color: white !important;
+}
+
+.action-btn.warning:hover:not(:disabled) {
+    background: #d97706 !important;
+    border-color: #d97706 !important;
+    transform: translateY(-1px);
+}
+
+.action-btn.danger {
+    background: #ef4444 !important;
+    border-color: #ef4444 !important;
+    color: white !important;
+}
+
+.action-btn.danger:hover:not(:disabled) {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+    transform: translateY(-1px);
+}
+
+.action-btn.info {
+    background: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+    color: white !important;
+}
+
+.action-btn.info:hover:not(:disabled) {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+    transform: translateY(-1px);
+}
+
+.action-btn.secondary {
+    background: #6b7280 !important;
+    border-color: #6b7280 !important;
+    color: white !important;
+}
+
+.action-btn.secondary:hover:not(:disabled) {
+    background: #4b5563 !important;
+    border-color: #4b5563 !important;
+    transform: translateY(-1px);
+}
+
+.action-btn.danger-outline {
+    background: transparent !important;
+    border-color: #ef4444 !important;
+    color: #ef4444 !important;
+}
+
+.action-btn.danger-outline:hover:not(:disabled) {
+    background: #ef4444 !important;
+    color: white !important;
+    transform: translateY(-1px);
+}
+
+.action-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+}
+
+.actions-column {
+    min-width: 300px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .bot-actions {
+        min-width: 200px;
+    }
+    
+    .control-buttons,
+    .additional-actions {
+        flex-wrap: wrap;
+    }
+    
+    .action-btn {
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0.25rem !important;
+    }
 }
 </style>

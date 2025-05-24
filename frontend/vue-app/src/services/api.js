@@ -118,6 +118,72 @@ export default {
     return apiClient.post('/api/v1/auth/register', userData);
   },
   
+  // Terminal/Bot Commands
+  executeTerminalCommand(botId, command, args = []) {
+    return apiClient.post(`/api/v1/external-bots/${botId}/terminal/command`, {
+      command,
+      args
+    });
+  },
+  getBotStatus(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/status`);
+  },
+  getBotBalance(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/balance`);
+  },
+  getBotPositions(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/positions`);
+  },
+  getBotConfig(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/config`);
+  },
+  getBotProfit(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/profit`);
+  },
+  pingBot(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/ping`);
+  },
+  getBotVersion(botId) {
+    return apiClient.get(`/api/v1/external-bots/${botId}/version`);
+  },
+  reloadBotConfig(botId) {
+    return apiClient.post(`/api/v1/external-bots/${botId}/reload`);
+  },
+
+  // WebSocket for real-time terminal updates
+  createTerminalWebSocket(botId, onMessage, onError, onClose) {
+    const token = localStorage.getItem('authToken');
+    const wsUrl = `ws://localhost:8000/api/v1/external-bots/${botId}/terminal/ws?token=${token}`;
+    
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log('Terminal WebSocket connected');
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+        onError(error);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('Terminal WebSocket error:', error);
+      onError(error);
+    };
+    
+    ws.onclose = (event) => {
+      console.log('Terminal WebSocket closed:', event.code, event.reason);
+      onClose(event);
+    };
+    
+    return ws;
+  },
+
   // Utility
   setAuthHeader(token) {
     if (token) {
