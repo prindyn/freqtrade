@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
-import router from './router'; // Assuming your router is here
+import router from './router';
+import api from '@/services/api';
 import PrimeVue from 'primevue/config';
 
 // Import PrimeVue theme (e.g., Saga Blue, choose one)
@@ -15,6 +16,11 @@ import 'primeflex/primeflex.css'; // For PrimeFlex utilities
 
 const app = createApp(App);
 
+// Initialize auth header if token present
+const token = localStorage.getItem('authToken');
+if (token) {
+  api.setAuthHeader(token);
+}
 app.use(router);
 app.use(PrimeVue, { ripple: true }); // ripple effect is optional
 
