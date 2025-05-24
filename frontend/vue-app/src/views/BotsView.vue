@@ -121,13 +121,13 @@
                             <div class="primary-controls">
                                 <Button icon="pi pi-play" class="control-btn success" v-tooltip="'Start Bot'"
                                     @click="startBot(slotProps.data)"
-                                    :disabled="slotProps.data.status === 'running' || isExecuting(slotProps.data.id)"
-                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'start'" />
+                                    :disabled="slotProps.data.status === 'running' || isExecuting(slotProps.data.bot_id)"
+                                    :loading="isExecuting(slotProps.data.bot_id) && lastAction === 'start'" />
 
                                 <Button icon="pi pi-stop" class="control-btn danger" v-tooltip="'Stop Bot'"
                                     @click="stopBot(slotProps.data)"
-                                    :disabled="slotProps.data.status === 'stopped' || isExecuting(slotProps.data.id)"
-                                    :loading="isExecuting(slotProps.data.id) && lastAction === 'stop'" />
+                                    :disabled="slotProps.data.status === 'stopped' || isExecuting(slotProps.data.bot_id)"
+                                    :loading="isExecuting(slotProps.data.bot_id) && lastAction === 'stop'" />
 
                                 <!-- More Actions Dropdown -->
                                 <SplitButton icon="pi pi-cog" class="control-btn secondary" v-tooltip="'More Actions'"
@@ -232,8 +232,8 @@ export default {
                     return {
                         ...bot,
                         bot_type: 'external',
-                        bot_id: bot.id,
-                        name: bot.name || bot.api_url || `Bot ${bot.id}`,
+                        bot_id: bot.bot_id || bot.id,
+                        name: bot.name || bot.api_url || `Bot ${bot.bot_id || bot.id}`,
                         status: bot.status || 'unknown',
                         details: {
                             created_at: bot.created_at,
@@ -255,8 +255,8 @@ export default {
                     return {
                         ...bot,
                         bot_type: 'shared',
-                        bot_id: bot.id,
-                        name: bot.name || `Shared Bot ${bot.id}`,
+                        bot_id: bot.bot_id || bot.id,
+                        name: bot.name || `Shared Bot ${bot.bot_id || bot.id}`,
                         status: bot.status || 'unknown',
                         details: {
                             created_at: bot.created_at,
@@ -271,7 +271,7 @@ export default {
 
                 // Initialize command data for each bot
                 this.bots.forEach(bot => {
-                    this.initializeBotCommandData(bot.id);
+                    this.initializeBotCommandData(bot.bot_id);
                 });
 
                 // Load real-time data for external bots
@@ -314,35 +314,35 @@ export default {
 
             for (const bot of externalBots) {
                 try {
-                    console.log(`Loading data for bot ${bot.id} (${bot.name})...`);
+                    console.log(`Loading data for bot ${bot.bot_id} (${bot.name})...`);
 
                     const [statusResponse, performanceResponse] = await Promise.all([
-                        api.getBotStatus(bot.id).catch(err => {
-                            console.warn(`Failed to get status for bot ${bot.id}:`, err);
+                        api.getExternalBotStatus(bot.bot_id).catch(err => {
+                            console.warn(`Failed to get status for bot ${bot.bot_id}:`, err);
                             return null;
                         }),
-                        api.getBotPerformance(bot.id).catch(err => {
-                            console.warn(`Failed to get performance for bot ${bot.id}:`, err);
+                        api.getExternalBotPerformance(bot.bot_id).catch(err => {
+                            console.warn(`Failed to get performance for bot ${bot.bot_id}:`, err);
                             return null;
                         })
                     ]);
 
-                    console.log(`Bot ${bot.id} status response:`, statusResponse);
-                    console.log(`Bot ${bot.id} performance response:`, performanceResponse);
+                    console.log(`Bot ${bot.bot_id} status response:`, statusResponse);
+                    console.log(`Bot ${bot.bot_id} performance response:`, performanceResponse);
 
-                    this.realTimeData[bot.id] = {
+                    this.realTimeData[bot.bot_id] = {
                         status: statusResponse?.data || {},
                         performance: performanceResponse?.data || {}
                     };
 
                     // Update bot status with real data
                     if (statusResponse?.data?.status) {
-                        console.log(`Updating bot ${bot.id} status from '${bot.status}' to '${statusResponse.data.status}'`);
+                        console.log(`Updating bot ${bot.bot_id} status from '${bot.status}' to '${statusResponse.data.status}'`);
                         bot.status = statusResponse.data.status;
                     }
 
                 } catch (error) {
-                    console.error(`Error loading data for bot ${bot.id}:`, error);
+                    console.error(`Error loading data for bot ${bot.bot_id}:`, error);
                 }
             }
 
@@ -401,13 +401,13 @@ export default {
                     label: 'Restart',
                     icon: 'pi pi-refresh',
                     command: () => this.restartBot(bot),
-                    disabled: this.isExecuting(bot.id)
+                    disabled: this.isExecuting(bot.bot_id)
                 },
                 {
                     label: 'Pause',
                     icon: 'pi pi-pause',
                     command: () => this.pauseBot(bot),
-                    disabled: bot.status !== 'running' || this.isExecuting(bot.id)
+                    disabled: bot.status !== 'running' || this.isExecuting(bot.bot_id)
                 },
                 { separator: true },
                 {
@@ -449,12 +449,12 @@ export default {
                 return;
             }
 
-            this.executingBots.add(bot.id);
+            this.executingBots.add(bot.bot_id);
             this.lastAction = 'start';
 
             try {
-                // Send start command to the actual bot server
-                await api.executeTerminalCommand(bot.id, 'start', []);
+                // Send start command to the external bot
+                await api.startExternalBot(bot.bot_id);
 
                 this.$toast.add({
                     severity: 'success',
@@ -480,7 +480,7 @@ export default {
                     life: 3000
                 });
             } finally {
-                this.executingBots.delete(bot.id);
+                this.executingBots.delete(bot.bot_id);
             }
         },
 
@@ -495,12 +495,12 @@ export default {
                 return;
             }
 
-            this.executingBots.add(bot.id);
+            this.executingBots.add(bot.bot_id);
             this.lastAction = 'pause';
 
             try {
-                // Send pause command to the actual bot server
-                await api.executeTerminalCommand(bot.id, 'forcebuy', ['cancel_open_orders']);
+                // For now, use stop command since pause is not implemented
+                await api.stopExternalBot(bot.bot_id);
 
                 this.$toast.add({
                     severity: 'info',
@@ -526,7 +526,7 @@ export default {
                     life: 3000
                 });
             } finally {
-                this.executingBots.delete(bot.id);
+                this.executingBots.delete(bot.bot_id);
             }
         },
 
@@ -541,12 +541,12 @@ export default {
                 return;
             }
 
-            this.executingBots.add(bot.id);
+            this.executingBots.add(bot.bot_id);
             this.lastAction = 'stop';
 
             try {
-                // Send stop command to the actual bot server
-                await api.executeTerminalCommand(bot.id, 'stop', []);
+                // Send stop command to the external bot
+                await api.stopExternalBot(bot.bot_id);
 
                 this.$toast.add({
                     severity: 'success',
@@ -572,7 +572,7 @@ export default {
                     life: 3000
                 });
             } finally {
-                this.executingBots.delete(bot.id);
+                this.executingBots.delete(bot.bot_id);
             }
         },
 
@@ -587,18 +587,18 @@ export default {
                 return;
             }
 
-            this.executingBots.add(bot.id);
+            this.executingBots.add(bot.bot_id);
             this.lastAction = 'restart';
 
             try {
                 // Send stop command first
-                await api.executeTerminalCommand(bot.id, 'stop', []);
+                await api.stopExternalBot(bot.bot_id);
                 bot.status = 'stopping';
 
                 // Wait a moment, then send start command
                 setTimeout(async () => {
                     try {
-                        await api.executeTerminalCommand(bot.id, 'start', []);
+                        await api.startExternalBot(bot.bot_id);
                         bot.status = 'starting';
 
                         this.$toast.add({
@@ -622,7 +622,7 @@ export default {
                             life: 3000
                         });
                     } finally {
-                        this.executingBots.delete(bot.id);
+                        this.executingBots.delete(bot.bot_id);
                     }
                 }, 3000);
 
@@ -634,7 +634,7 @@ export default {
                     detail: error.response?.data?.detail || 'Failed to restart bot (stop phase)',
                     life: 3000
                 });
-                this.executingBots.delete(bot.id);
+                this.executingBots.delete(bot.bot_id);
             }
         },
 
@@ -644,9 +644,9 @@ export default {
             if (confirm(confirmMessage)) {
                 try {
                     if (bot.bot_type === 'external') {
-                        await api.deleteExternalBot(bot.id);
+                        await api.deleteExternalBot(bot.bot_id);
                     } else {
-                        await api.unsubscribeFromSharedBot(bot.id);
+                        await api.unsubscribeFromSharedBot(bot.bot_id);
                     }
 
                     this.$toast.add({
@@ -672,13 +672,13 @@ export default {
             // Navigate to terminal with pre-selected bot
             this.$router.push({
                 name: 'terminal',
-                query: { bot: bot.id }
+                query: { bot: bot.bot_id }
             });
         },
 
         viewBotPerformance(bot) {
             // Navigate to bot performance view or show modal
-            this.$router.push(`/bots/${bot.id}/performance`);
+            this.$router.push(`/bots/${bot.bot_id}/performance`);
         },
 
         openBotSettings() {

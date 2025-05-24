@@ -55,6 +55,7 @@ def update_bot_status(
     status: str,
     container_id: Optional[str] = None,
     exposed_host_port: Optional[int] = None,
+    connection_error: Optional[str] = None,
 ) -> Optional[models_bot.Bot]:
     db_bot = get_bot(db, bot_id=bot_id, tenant_id=tenant_id)  # Verify ownership
     if db_bot:
@@ -63,6 +64,8 @@ def update_bot_status(
             db_bot.container_id = container_id
         if exposed_host_port is not None:
             db_bot.exposed_host_port = exposed_host_port
+        if connection_error is not None:
+            db_bot.connection_error = connection_error
         db.commit()
         db.refresh(db_bot)
     return db_bot

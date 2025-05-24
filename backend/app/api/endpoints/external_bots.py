@@ -252,6 +252,15 @@ async def get_external_bot_status(
             connection_error=None,
         )
 
+        # Ensure bot_data is always a dictionary
+        bot_data = status_result["data"]
+        if isinstance(bot_data, list):
+            # If the API returns a list (e.g., trades), wrap it in a dictionary
+            bot_data = {"trades": bot_data}
+        elif not isinstance(bot_data, dict):
+            # If it's neither list nor dict, wrap it in a generic structure
+            bot_data = {"raw_data": bot_data}
+
         return BotStatusResponse(
             bot_id=bot_id,
             bot_type="external",
@@ -261,7 +270,7 @@ async def get_external_bot_status(
                 "last_ping": status_result["timestamp"],
                 "success": True,
             },
-            bot_data=status_result["data"],
+            bot_data=bot_data,
         )
     else:
         # Update connection error
