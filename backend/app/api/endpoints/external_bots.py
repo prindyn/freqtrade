@@ -22,6 +22,61 @@ router = APIRouter()
 external_bot_manager = ExternalBotManager()
 
 
+@router.get("", response_model=List[BotResponse])
+async def list_external_bots(
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """
+    Get all external bots for the current user/tenant
+    """
+    logger.info(
+        "User requesting external bots list",
+        extra={
+            "event_type": "external_bots_list_request",
+            "user_id": str(current_user.id),
+            "tenant_id": current_user.tenant_id,
+        }
+    )
+    
+    # Get all external bots for this tenant
+    db_bots = (
+        db.query(models_bot.Bot)
+        .filter(
+            models_bot.Bot.tenant_id == current_user.tenant_id,
+            models_bot.Bot.bot_type == "external",
+        )
+        .all()
+    )
+    
+    bots_response = []
+    for db_bot in db_bots:
+        bots_response.append(BotResponse(
+            id=db_bot.id,
+            bot_id=db_bot.bot_id,
+            tenant_id=db_bot.tenant_id,
+            bot_type=db_bot.bot_type,
+            name=db_bot.name,
+            description=db_bot.description,
+            status=db_bot.status,
+            api_url=db_bot.api_url,
+            created_at=db_bot.created_at,
+            updated_at=db_bot.updated_at,
+        ))
+    
+    logger.info(
+        f"Returning {len(bots_response)} external bots for user",
+        extra={
+            "event_type": "external_bots_list_response",
+            "user_id": str(current_user.id),
+            "tenant_id": current_user.tenant_id,
+            "bot_count": len(bots_response),
+        }
+    )
+    
+    return bots_response
+
+
 @router.post("/test-connection")
 async def test_bot_connection(
     connection_test: BotConnectionTest,
@@ -197,6 +252,15 @@ async def get_external_bot_status(
             connection_error=None,
         )
 
+        # Ensure bot_data is always a dictionary
+        bot_data = status_result["data"]
+        if isinstance(bot_data, list):
+            # If the API returns a list (e.g., trades), wrap it in a dictionary
+            bot_data = {"trades": bot_data}
+        elif not isinstance(bot_data, dict):
+            # If it's neither list nor dict, wrap it in a generic structure
+            bot_data = {"raw_data": bot_data}
+
         return BotStatusResponse(
             bot_id=bot_id,
             bot_type="external",
@@ -206,7 +270,7 @@ async def get_external_bot_status(
                 "last_ping": status_result["timestamp"],
                 "success": True,
             },
-            bot_data=status_result["data"],
+            bot_data=bot_data,
         )
     else:
         # Update connection error
@@ -370,6 +434,43 @@ async def get_external_bot_trades(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Failed to get trades: {result['message']}",
+        )
+
+
+@router.get("/{bot_id}/ping")
+async def ping_external_bot(
+    bot_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: models_user.User = Depends(deps.get_current_active_user),
+):
+    """
+    Ping an external FreqTrade bot to check connectivity
+    """
+    db_bot = crud_bot.get_bot(db, bot_id=bot_id, tenant_id=current_user.tenant_id)
+    if not db_bot or db_bot.bot_type != "external":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="External bot not found"
+        )
+
+    result = await external_bot_manager.ping_bot(
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
+    )
+
+    if result["success"]:
+        return {
+            "success": True,
+            "message": "Bot ping successful",
+            "timestamp": result["timestamp"],
+            "response_time": result.get("response_time")
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to ping bot: {result.get('error', 'Unknown error')}",
         )
 
 

@@ -36,8 +36,8 @@
                 <div v-if="terminalHistory.length === 0" class="welcome-message">
                     <div class="ascii-art">
                         ╔════════════════════════════════════════╗
-                        ║           TradeWise Terminal           ║
-                        ║        Bot Command Interface           ║
+                        ║ TradeWise Terminal ║
+                        ║ Bot Command Interface ║
                         ╚════════════════════════════════════════╝
                     </div>
                     <div class="welcome-text">
@@ -73,16 +73,8 @@
                 <!-- Current Input Line -->
                 <div v-if="selectedBot" class="input-line">
                     <span class="prompt">{{ currentPrompt }}</span>
-                    <input
-                        ref="terminalInput"
-                        v-model="currentCommand"
-                        @keydown="handleKeyDown"
-                        @keyup="handleKeyUp"
-                        class="command-input"
-                        :disabled="isExecuting"
-                        autocomplete="off"
-                        spellcheck="false"
-                    />
+                    <input ref="terminalInput" v-model="currentCommand" @keydown="handleKeyDown" @keyup="handleKeyUp"
+                        class="command-input" :disabled="isExecuting" autocomplete="off" spellcheck="false" />
                     <span v-if="isExecuting" class="executing-indicator">
                         <i class="pi pi-spin pi-spinner"></i>
                     </span>
@@ -128,13 +120,8 @@
 
         <!-- Command Suggestions -->
         <div v-if="showSuggestions && filteredSuggestions.length > 0" class="command-suggestions">
-            <div
-                v-for="(suggestion, index) in filteredSuggestions"
-                :key="index"
-                @click="selectSuggestion(suggestion)"
-                class="suggestion-item"
-                :class="{ active: selectedSuggestionIndex === index }"
-            >
+            <div v-for="(suggestion, index) in filteredSuggestions" :key="index" @click="selectSuggestion(suggestion)"
+                class="suggestion-item" :class="{ active: selectedSuggestionIndex === index }">
                 <span class="suggestion-command">{{ suggestion.command }}</span>
                 <span class="suggestion-description">{{ suggestion.description }}</span>
             </div>
@@ -143,6 +130,8 @@
 </template>
 
 <script>
+import api from '@/services/api';
+
 export default {
     name: 'TerminalView',
     data() {
@@ -159,11 +148,9 @@ export default {
             isFullscreen: false,
             showSuggestions: false,
             selectedSuggestionIndex: 0,
-            availableBots: [
-                { id: 'bot1', name: 'BTC Scalper', status: 'running' },
-                { id: 'bot2', name: 'ETH DCA', status: 'running' },
-                { id: 'bot3', name: 'Alt Momentum', status: 'stopped' }
-            ],
+            availableBots: [],
+            websocket: null,
+            connectionStartTime: null,
             commandSuggestions: [
                 { command: 'help', description: 'Show available commands' },
                 { command: 'status', description: 'Show bot status information' },
@@ -179,7 +166,8 @@ export default {
                 { command: 'reload', description: 'Reload bot configuration' },
                 { command: 'version', description: 'Show bot version information' },
                 { command: 'ping', description: 'Test connection to bot' },
-                { command: 'clear', description: 'Clear terminal output' }
+                { command: 'clear', description: 'Clear terminal output' },
+                { command: 'exit', description: 'Disconnect from current bot' }
             ]
         }
     },
@@ -212,18 +200,32 @@ export default {
             ).slice(0, 5);
         }
     },
-    mounted() {
+    async mounted() {
         this.focusInput();
         this.updateConnectionTime();
         setInterval(this.updateConnectionTime, 1000);
-        
+
         // Handle fullscreen events
         document.addEventListener('fullscreenchange', this.handleFullscreenChange);
         document.addEventListener('webkitfullscreenchange', this.handleFullscreenChange);
+
+        // Load available bots from server
+        await this.loadAvailableBots();
+        
+        // Check if bot is pre-selected via query parameter
+        if (this.$route.query.bot) {
+            this.selectedBot = this.$route.query.bot;
+            await this.switchBot();
+        }
     },
     beforeUnmount() {
         document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
         document.removeEventListener('webkitfullscreenchange', this.handleFullscreenChange);
+
+        // Close WebSocket connection
+        if (this.websocket) {
+            this.websocket.close();
+        }
     },
     methods: {
         focusInput() {
@@ -258,7 +260,7 @@ export default {
         },
         handleKeyUp(event) {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') return;
-            
+
             if (this.currentCommand.trim()) {
                 this.showSuggestions = true;
                 this.selectedSuggestionIndex = 0;
@@ -268,7 +270,7 @@ export default {
         },
         navigateHistory(direction) {
             if (this.commandHistory.length === 0) return;
-            
+
             if (direction === 'up') {
                 if (this.commandHistoryIndex < this.commandHistory.length - 1) {
                     this.commandHistoryIndex++;
@@ -278,7 +280,7 @@ export default {
                     this.commandHistoryIndex--;
                 }
             }
-            
+
             if (this.commandHistoryIndex === -1) {
                 this.currentCommand = '';
             } else {
@@ -301,29 +303,29 @@ export default {
         },
         async executeCommand() {
             if (!this.currentCommand.trim() || this.isExecuting) return;
-            
+
             const command = this.currentCommand.trim();
-            
+
             // Add command to history
             this.terminalHistory.push({
                 type: 'command',
                 content: command,
                 timestamp: new Date()
             });
-            
+
             this.commandHistory.unshift(command);
             this.commandHistoryIndex = -1;
             this.commandCount++;
-            
+
             // Clear input
             this.currentCommand = '';
             this.hideSuggestions();
-            
+
             // Execute command
             this.isExecuting = true;
             await this.processCommand(command);
             this.isExecuting = false;
-            
+
             // Scroll to bottom
             this.$nextTick(() => {
                 this.scrollToBottom();
@@ -332,7 +334,7 @@ export default {
         },
         async processCommand(command) {
             const [cmd, ...args] = command.split(' ');
-            
+
             try {
                 switch (cmd.toLowerCase()) {
                     case 'help':
@@ -342,46 +344,53 @@ export default {
                         this.clearTerminal();
                         break;
                     case 'status':
-                        await this.getBotStatus();
+                        await this.getBotStatusReal();
                         break;
                     case 'start':
-                        await this.startBot();
+                        await this.startBotReal();
                         break;
                     case 'stop':
-                        await this.stopBot();
+                        await this.stopBotReal();
                         break;
                     case 'restart':
-                        await this.restartBot();
+                        await this.restartBotReal();
                         break;
                     case 'balance':
-                        await this.getBalance();
+                        await this.getBalanceReal();
                         break;
                     case 'positions':
-                        await this.getPositions();
+                        await this.getPositionsReal();
                         break;
                     case 'trades':
-                        await this.getTrades(args[0]);
+                        await this.getTradesReal(args[0]);
                         break;
                     case 'profit':
-                        await this.getProfit();
+                        await this.getProfitReal();
                         break;
                     case 'config':
-                        await this.getConfig();
+                        await this.getConfigReal();
                         break;
                     case 'logs':
-                        await this.getLogs(args[0]);
+                        await this.getLogsReal(args[0]);
                         break;
                     case 'ping':
-                        await this.pingBot();
+                        await this.pingBotReal();
                         break;
                     case 'version':
-                        await this.getVersion();
+                        await this.getVersionReal();
+                        break;
+                    case 'reload':
+                        await this.reloadBotConfig();
+                        break;
+                    case 'exit':
+                        this.disconnectFromBot();
                         break;
                     default:
-                        this.addError(`Unknown command: ${cmd}. Type 'help' for available commands.`);
+                        // Try to execute as a generic command
+                        await this.executeGenericCommand(cmd, args);
                 }
             } catch (error) {
-                this.addError(`Error executing command: ${error.message}`);
+                this.addError(`Error executing command: ${error.response?.data?.detail || error.message}`);
             }
         },
         showHelp() {
@@ -394,6 +403,7 @@ System Commands:
   clear             Clear terminal output
   ping              Test connection to bot
   version           Show bot version information
+  exit              Disconnect from current bot
 
 Bot Control:
   status            Show bot status and information
@@ -410,198 +420,405 @@ Trading Information:
   profit            Show profit summary
   logs [level]      Show recent log entries
 
+Real-time Features:
+  • Live bot status updates via WebSocket
+  • Real-time trade notifications
+  • Instant log streaming
+  • Connection status monitoring
+
 Navigation:
   ↑/↓               Navigate command history
   Tab               Auto-complete commands
   Ctrl+L            Clear terminal
+
+Note: Commands are executed directly on the selected bot server.
             `;
             this.addOutput(helpText);
         },
-        async getBotStatus() {
-            await this.simulateDelay();
-            const bot = this.availableBots.find(b => b.id === this.selectedBot);
-            if (!bot) {
-                this.addError('Bot not found');
-                return;
+        // Real server communication methods
+        async loadAvailableBots() {
+            try {
+                const response = await api.getExternalBots();
+                this.availableBots = response.data.map(bot => ({
+                    id: bot.bot_id || bot.id,
+                    name: bot.name,
+                    status: bot.status
+                }));
+            } catch (error) {
+                console.error('Failed to load bots:', error);
+                this.addError('Failed to load available bots from server');
             }
-            
-            const statusInfo = `
+        },
+
+        async executeGenericCommand(command, args) {
+            try {
+                const response = await api.executeTerminalCommand(this.selectedBot, command, args);
+                this.addOutput(response.data.output || response.data.message || 'Command executed successfully');
+            } catch (error) {
+                throw error;
+            }
+        },
+
+        async getBotStatusReal() {
+            try {
+                const response = await api.getBotStatus(this.selectedBot);
+                const status = response.data;
+
+                const statusInfo = `
 Bot Status Information:
 ─────────────────────
 
-Name:           ${bot.name}
-Status:         ${bot.status.toUpperCase()}
-Uptime:         2 days, 14 hours, 32 minutes
-Strategy:       DCA + Grid Trading
-Pair:           BTC/USDT
-Balance:        $5,247.83
-Open Trades:    3
-Total Trades:   127
-Win Rate:       73.2%
+Name:           ${status.name || 'Unknown'}
+Status:         ${status.status?.toUpperCase() || 'UNKNOWN'}
+Uptime:         ${status.uptime || 'Unknown'}
+Strategy:       ${status.strategy || 'Unknown'}
+Pair:           ${status.pair || 'Unknown'}
+Balance:        ${status.balance || 'Unknown'}
+Open Trades:    ${status.open_trades || 0}
+Total Trades:   ${status.total_trades || 0}
+Win Rate:       ${status.win_rate || 0}%
 Last Update:    ${new Date().toLocaleString()}
-            `;
-            this.addOutput(statusInfo);
+                `;
+                this.addOutput(statusInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async startBot() {
-            await this.simulateDelay(1500);
-            this.addInfo('Starting trading bot...');
-            await this.simulateDelay(1000);
-            this.addSuccess('Bot started successfully');
-            
-            // Update bot status
-            const bot = this.availableBots.find(b => b.id === this.selectedBot);
-            if (bot) bot.status = 'running';
+
+        async startBotReal() {
+            try {
+                this.addInfo('Starting trading bot...');
+                const response = await api.startExternalBot(this.selectedBot);
+                this.addSuccess(response.data.message || 'Bot started successfully');
+
+                // Update local bot status
+                const bot = this.availableBots.find(b => b.id === this.selectedBot);
+                if (bot) bot.status = 'running';
+            } catch (error) {
+                throw error;
+            }
         },
-        async stopBot() {
-            await this.simulateDelay(1000);
-            this.addInfo('Stopping trading bot...');
-            await this.simulateDelay(500);
-            this.addSuccess('Bot stopped successfully');
-            
-            // Update bot status
-            const bot = this.availableBots.find(b => b.id === this.selectedBot);
-            if (bot) bot.status = 'stopped';
+
+        async stopBotReal() {
+            try {
+                this.addInfo('Stopping trading bot...');
+                const response = await api.stopExternalBot(this.selectedBot);
+                this.addSuccess(response.data.message || 'Bot stopped successfully');
+
+                // Update local bot status
+                const bot = this.availableBots.find(b => b.id === this.selectedBot);
+                if (bot) bot.status = 'stopped';
+            } catch (error) {
+                throw error;
+            }
         },
-        async restartBot() {
-            await this.simulateDelay(1000);
-            this.addInfo('Restarting trading bot...');
-            await this.simulateDelay(2000);
-            this.addSuccess('Bot restarted successfully');
+
+        async restartBotReal() {
+            try {
+                this.addInfo('Restarting trading bot...');
+                await api.stopExternalBot(this.selectedBot);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await api.startExternalBot(this.selectedBot);
+                this.addSuccess('Bot restarted successfully');
+            } catch (error) {
+                throw error;
+            }
         },
-        async getBalance() {
-            await this.simulateDelay();
-            const balanceInfo = `
+
+        async getBalanceReal() {
+            try {
+                const response = await api.getBotBalance(this.selectedBot);
+                const balance = response.data;
+
+                let balanceInfo = `
 Account Balance:
 ───────────────
 
-Total Balance:    $5,247.83
-Available:        $3,891.22
-In Orders:        $1,356.61
-Unrealized P&L:   +$142.35 (+2.78%)
+Total Balance:    ${balance.total || 'Unknown'}
+Available:        ${balance.available || 'Unknown'}
+In Orders:        ${balance.in_orders || 'Unknown'}
+Unrealized P&L:   ${balance.unrealized_pnl || 'Unknown'}
+                `;
 
-Asset Breakdown:
-BTC:             0.08432 BTC  ($3,654.21)
-USDT:            1,593.62 USDT
-ETH:             0.6841 ETH   ($1,782.33)
-            `;
-            this.addOutput(balanceInfo);
+                if (balance.assets && balance.assets.length > 0) {
+                    balanceInfo += '\nAsset Breakdown:\n';
+                    balance.assets.forEach(asset => {
+                        balanceInfo += `${asset.currency}:${' '.repeat(15 - asset.currency.length)}${asset.amount} ${asset.currency}  (${asset.value || 'Unknown'})\n`;
+                    });
+                }
+
+                this.addOutput(balanceInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getPositions() {
-            await this.simulateDelay();
-            const positionsInfo = `
+
+        async getPositionsReal() {
+            try {
+                const response = await api.getBotPositions(this.selectedBot);
+                const positions = response.data;
+
+                if (!positions || positions.length === 0) {
+                    this.addOutput('No open positions');
+                    return;
+                }
+
+                let positionsInfo = `
 Open Positions:
 ──────────────
 
-BTC/USDT  LONG   0.02 BTC    $43,250   $43,890   +1.48%   2h 15m
-ETH/USDT  LONG   0.31 ETH    $2,580    $2,545    -1.36%   4h 23m
-ADA/USDT  SHORT  1,250 ADA   $0.485    $0.472    +2.68%   6h 12m
+`;
+                let totalPnl = 0;
 
-Total Unrealized P&L: +$142.35 (+2.78%)
-            `;
-            this.addOutput(positionsInfo);
+                positions.forEach(pos => {
+                    const pnlPercent = pos.unrealized_pnl_percent || 0;
+                    totalPnl += parseFloat(pos.unrealized_pnl || 0);
+
+                    positionsInfo += `${pos.pair}  ${pos.side?.toUpperCase()}   ${pos.amount}    $${pos.entry_price}   $${pos.current_price}   ${pnlPercent > 0 ? '+' : ''}${pnlPercent}%   ${pos.duration || 'Unknown'}\n`;
+                });
+
+                positionsInfo += `\nTotal Unrealized P&L: ${totalPnl > 0 ? '+' : ''}$${totalPnl.toFixed(2)}`;
+
+                this.addOutput(positionsInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getTrades(limit = '10') {
-            await this.simulateDelay();
-            const tradesInfo = `
+
+        async getTradesReal(limit = '10') {
+            try {
+                const response = await api.getBotTrades(this.selectedBot, parseInt(limit));
+                const trades = response.data;
+
+                if (!trades || trades.length === 0) {
+                    this.addOutput('No recent trades');
+                    return;
+                }
+
+                let tradesInfo = `
 Recent Trades (Last ${limit}):
 ─────────────────────────
 
-BTC/USDT  SELL  0.015 BTC  $42,150  +2.31%   3h 24m ago
-ETH/USDT  BUY   0.284 ETH  $2,620   +1.53%   5h 45m ago
-SOL/USDT  SELL  12.5 SOL   $85.20   -2.46%   8h 12m ago
-ADA/USDT  BUY   800 ADA    $0.491   +3.84%   12h 33m ago
-MATIC/USDT SELL 450 MATIC  $0.865   +1.92%   1d 2h ago
+`;
+                let totalProfit = 0;
 
-Total Profit Today: +$87.23 (+1.89%)
-            `;
-            this.addOutput(tradesInfo);
+                trades.forEach(trade => {
+                    const profit = parseFloat(trade.profit_percent || 0);
+                    totalProfit += profit;
+
+                    tradesInfo += `${trade.pair}  ${trade.side?.toUpperCase()}  ${trade.amount}  $${trade.price}  ${profit > 0 ? '+' : ''}${profit.toFixed(2)}%   ${trade.duration || 'Unknown'}\n`;
+                });
+
+                tradesInfo += `\nTotal Profit: ${totalProfit > 0 ? '+' : ''}$${totalProfit.toFixed(2)}`;
+
+                this.addOutput(tradesInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getProfit() {
-            await this.simulateDelay();
-            const profitInfo = `
+
+        async getProfitReal() {
+            try {
+                const response = await api.getBotProfit(this.selectedBot);
+                const profit = response.data;
+
+                const profitInfo = `
 Profit Summary:
 ──────────────
 
-Today:           +$87.23  (+1.89%)
-This Week:       +$324.56 (+7.12%)
-This Month:      +$1,247.83 (+31.24%)
-All Time:        +$2,891.47 (+122.45%)
+Today:           ${profit.today || 'Unknown'}
+This Week:       ${profit.this_week || 'Unknown'}
+This Month:      ${profit.this_month || 'Unknown'}
+All Time:        ${profit.all_time || 'Unknown'}
 
-Best Trade:      BTC/USDT +$156.78 (5.24%)
-Worst Trade:     ETH/USDT -$67.43 (-2.89%)
-Win Rate:        73.2% (93/127 trades)
-Average Trade:   +$22.74
-            `;
-            this.addOutput(profitInfo);
+Best Trade:      ${profit.best_trade || 'Unknown'}
+Worst Trade:     ${profit.worst_trade || 'Unknown'}
+Win Rate:        ${profit.win_rate || 0}%
+Average Trade:   ${profit.avg_trade || 'Unknown'}
+                `;
+                this.addOutput(profitInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getConfig() {
-            await this.simulateDelay();
-            const configInfo = `
+
+        async getConfigReal() {
+            try {
+                const response = await api.getBotConfig(this.selectedBot);
+                const config = response.data;
+
+                let configInfo = `
 Bot Configuration:
 ─────────────────
 
-Strategy:         DCA + Grid Trading
-Max Position:     5% of balance
-Stop Loss:        -3%
-Take Profit:      +5%
-Grid Levels:      10
-Grid Spacing:     0.5%
-Trading Pairs:    BTC/USDT, ETH/USDT, ADA/USDT
-Timeframe:        5m
-Dry Run:          false
-            `;
-            this.addOutput(configInfo);
+`;
+                Object.entries(config).forEach(([key, value]) => {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    configInfo += `${formattedKey}:${' '.repeat(20 - formattedKey.length)}${value}\n`;
+                });
+
+                this.addOutput(configInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getLogs(level = 'info') {
-            await this.simulateDelay();
-            const logsInfo = `
+
+        async getLogsReal(level = 'info') {
+            try {
+                const response = await api.getExternalBotLogs(this.selectedBot, 20);
+                const logs = response.data;
+
+                if (!logs || logs.length === 0) {
+                    this.addOutput('No recent log entries');
+                    return;
+                }
+
+                let logsInfo = `
 Recent Log Entries (${level}):
 ─────────────────────────────
 
-[2024-01-15 14:32:15] INFO: Bot started successfully
-[2024-01-15 14:32:16] INFO: Loading strategy configuration
-[2024-01-15 14:32:17] INFO: Connected to exchange
-[2024-01-15 14:32:18] INFO: Starting trading loop
-[2024-01-15 14:35:21] INFO: New order placed: BUY 0.02 BTC at $43,250
-[2024-01-15 14:38:45] INFO: Order filled: BUY 0.02 BTC at $43,250
-[2024-01-15 14:42:12] WARN: High volatility detected
-[2024-01-15 14:45:33] INFO: Grid order placed at $43,500
-            `;
-            this.addOutput(logsInfo);
+`;
+                logs.forEach(log => {
+                    logsInfo += `[${log.timestamp}] ${log.level}: ${log.message}\n`;
+                });
+
+                this.addOutput(logsInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        async pingBot() {
-            await this.simulateDelay(500);
-            this.addSuccess('PONG - Bot is responding (latency: 45ms)');
+
+        async pingBotReal() {
+            try {
+                const startTime = Date.now();
+                await api.pingBot(this.selectedBot);
+                const latency = Date.now() - startTime;
+                this.addSuccess(`PONG - Bot is responding (latency: ${latency}ms)`);
+            } catch (error) {
+                throw error;
+            }
         },
-        async getVersion() {
-            await this.simulateDelay();
-            const versionInfo = `
+
+        async getVersionReal() {
+            try {
+                const response = await api.getBotVersion(this.selectedBot);
+                const version = response.data;
+
+                let versionInfo = `
 Version Information:
 ───────────────────
 
-Bot Version:      v2.4.1
-API Version:      v1.8.2
-Python:           3.9.16
-Exchange:         Binance v1.2.45
-Strategy Engine:  v3.1.0
-Last Update:      2024-01-10
-            `;
-            this.addOutput(versionInfo);
+`;
+                Object.entries(version).forEach(([key, value]) => {
+                    const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    versionInfo += `${formattedKey}:${' '.repeat(20 - formattedKey.length)}${value}\n`;
+                });
+
+                this.addOutput(versionInfo);
+            } catch (error) {
+                throw error;
+            }
         },
-        switchBot() {
+
+        async reloadBotConfig() {
+            try {
+                this.addInfo('Reloading bot configuration...');
+                const response = await api.reloadBotConfig(this.selectedBot);
+                this.addSuccess(response.data.message || 'Configuration reloaded successfully');
+            } catch (error) {
+                throw error;
+            }
+        },
+        async switchBot() {
+            // Close existing WebSocket if any
+            if (this.websocket) {
+                this.websocket.close();
+                this.websocket = null;
+            }
+
             if (!this.selectedBot) {
                 this.connectionStatus = 'disconnected';
+                this.connectionStartTime = null;
                 return;
             }
-            
+
             this.connectionStatus = 'connecting';
-            this.addInfo(`Connecting to ${this.availableBots.find(b => b.id === this.selectedBot)?.name}...`);
-            
-            setTimeout(() => {
+            const botName = this.availableBots.find(b => b.id === this.selectedBot)?.name;
+            this.addInfo(`Connecting to ${botName}...`);
+
+            try {
+                // Test connection first
+                await api.pingBot(this.selectedBot);
+
+                // Establish WebSocket connection for real-time updates
+                this.websocket = api.createTerminalWebSocket(
+                    this.selectedBot,
+                    this.handleWebSocketMessage,
+                    this.handleWebSocketError,
+                    this.handleWebSocketClose
+                );
+
                 this.connectionStatus = 'connected';
+                this.connectionStartTime = new Date();
                 this.addSuccess('Connected successfully');
                 this.focusInput();
-            }, 1500);
+
+            } catch (error) {
+                this.connectionStatus = 'error';
+                this.addError(`Failed to connect: ${error.response?.data?.detail || error.message}`);
+            }
+        },
+
+        handleWebSocketMessage(data) {
+            // Handle real-time messages from the bot
+            switch (data.type) {
+                case 'log':
+                    this.addOutput(`[${data.timestamp}] ${data.level}: ${data.message}`);
+                    break;
+                case 'status_update':
+                    this.addInfo(`Bot status changed to: ${data.status}`);
+                    // Update local bot status
+                    const bot = this.availableBots.find(b => b.id === this.selectedBot);
+                    if (bot) bot.status = data.status;
+                    break;
+                case 'trade_update':
+                    this.addSuccess(`Trade executed: ${data.side} ${data.amount} ${data.pair} at $${data.price}`);
+                    break;
+                case 'error':
+                    this.addError(`Bot error: ${data.message}`);
+                    break;
+                default:
+                    this.addOutput(data.message || JSON.stringify(data));
+            }
+
+            // Auto-scroll to bottom
+            this.$nextTick(() => {
+                this.scrollToBottom();
+            });
+        },
+
+        handleWebSocketError(error) {
+            console.error('WebSocket error:', error);
+            this.connectionStatus = 'error';
+            this.addError('WebSocket connection error');
+        },
+
+        handleWebSocketClose(event) {
+            if (event.code !== 1000) { // Not a normal closure
+                this.connectionStatus = 'disconnected';
+                this.addError('WebSocket connection lost');
+            }
+        },
+
+        disconnectFromBot() {
+            if (this.websocket) {
+                this.websocket.close();
+                this.websocket = null;
+            }
+            this.selectedBot = '';
+            this.connectionStatus = 'disconnected';
+            this.connectionStartTime = null;
+            this.addInfo('Disconnected from bot');
         },
         clearTerminal() {
             this.terminalHistory = [];
@@ -612,7 +829,7 @@ Last Update:      2024-01-10
                 const timestamp = entry.timestamp ? entry.timestamp.toISOString() : new Date().toISOString();
                 return `[${timestamp}] ${entry.type.toUpperCase()}: ${entry.content}`;
             }).join('\n');
-            
+
             const blob = new Blob([logs], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -620,7 +837,7 @@ Last Update:      2024-01-10
             a.download = `terminal-logs-${new Date().toISOString().split('T')[0]}.txt`;
             a.click();
             URL.revokeObjectURL(url);
-            
+
             this.addSuccess('Logs exported successfully');
         },
         toggleFullscreen() {
@@ -643,9 +860,18 @@ Last Update:      2024-01-10
             this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
         },
         updateConnectionTime() {
-            if (this.connectionStatus === 'connected') {
+            if (this.connectionStatus === 'connected' && this.connectionStartTime) {
                 const now = new Date();
-                this.connectionTime = now.toLocaleTimeString();
+                const diff = Math.floor((now - this.connectionStartTime) / 1000);
+                const hours = Math.floor(diff / 3600);
+                const minutes = Math.floor((diff % 3600) / 60);
+                const seconds = diff % 60;
+
+                if (hours > 0) {
+                    this.connectionTime = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                } else {
+                    this.connectionTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }
             } else {
                 this.connectionTime = '--:--';
             }
@@ -655,9 +881,6 @@ Last Update:      2024-01-10
             if (output) {
                 output.scrollTop = output.scrollHeight;
             }
-        },
-        simulateDelay(ms = 800) {
-            return new Promise(resolve => setTimeout(resolve, ms));
         },
         addOutput(content, level = 'info') {
             this.terminalHistory.push({
@@ -1057,31 +1280,31 @@ Last Update:      2024-01-10
         gap: 1rem;
         align-items: stretch;
     }
-    
+
     .header-controls {
         flex-direction: column;
         gap: 1rem;
     }
-    
+
     .bot-selector {
         flex-direction: column;
         align-items: stretch;
         gap: 0.25rem;
     }
-    
+
     .bot-select {
         min-width: auto;
     }
-    
+
     .terminal-info {
         flex-direction: column;
         gap: 0.5rem;
     }
-    
+
     .footer-right {
         flex-wrap: wrap;
     }
-    
+
     .command-suggestions {
         left: 0.5rem;
         right: 0.5rem;
