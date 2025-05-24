@@ -2,7 +2,7 @@
     <div id="app">
         <nav class="navbar">
             <div class="container">
-                <a class="navbar-brand" href="#">Freqtrade SaaS</a>
+                <a class="navbar-brand" href="#">TradeWise</a>
                 <ul class="navbar-nav">
                     <li class="nav-item">
                         <router-link to="/" class="nav-link">Home</router-link>
