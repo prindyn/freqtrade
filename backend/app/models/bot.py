@@ -25,7 +25,16 @@ class Bot(Base):
     
     # External bot connection details (for user's own bots)
     api_url = Column(String, nullable=True)  # FreqTrade bot API URL (e.g., http://user-server:8080)
+    
+    # Authentication method: 'token' or 'basic'
+    auth_method = Column(String, nullable=True, default="token")  # 'token' or 'basic'
+    
+    # Token-based authentication
     api_token = Column(String, nullable=True)  # FreqTrade bot API token for authentication
+    
+    # Username/password authentication  
+    username = Column(String, nullable=True)  # Username for basic auth
+    password = Column(String, nullable=True)  # Password for basic auth (encrypted)
     
     # Shared bot details (for platform-managed bots)
     config_template = Column(String, nullable=True)  # Configuration template for shared bots

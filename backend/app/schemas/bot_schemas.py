@@ -1,5 +1,5 @@
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, HttpUrl, validator
+from typing import Optional, Dict, Any, Literal
 from datetime import datetime
 
 
@@ -8,7 +8,32 @@ class ExternalBotCreate(BaseModel):
     name: str
     description: Optional[str] = None
     api_url: str  # e.g., "http://192.168.1.100:8080"
-    api_token: str
+    auth_method: Literal["token", "basic"] = "token"
+    
+    # Token authentication fields
+    api_token: Optional[str] = None
+    
+    # Basic authentication fields
+    username: Optional[str] = None
+    password: Optional[str] = None
+    
+    @validator('api_token')
+    def validate_token_auth(cls, v, values):
+        if values.get('auth_method') == 'token' and not v:
+            raise ValueError('api_token is required when auth_method is token')
+        return v
+    
+    @validator('username')
+    def validate_basic_auth_username(cls, v, values):
+        if values.get('auth_method') == 'basic' and not v:
+            raise ValueError('username is required when auth_method is basic')
+        return v
+    
+    @validator('password')
+    def validate_basic_auth_password(cls, v, values):
+        if values.get('auth_method') == 'basic' and not v:
+            raise ValueError('password is required when auth_method is basic')
+        return v
     
     class Config:
         schema_extra = {
@@ -16,6 +41,7 @@ class ExternalBotCreate(BaseModel):
                 "name": "My Trading Bot",
                 "description": "BTC/ETH trading bot on my home server",
                 "api_url": "http://192.168.1.100:8080",
+                "auth_method": "token",
                 "api_token": "your-bot-api-token-here"
             }
         }
@@ -42,7 +68,28 @@ class SharedBotCreate(BaseModel):
 class BotConnectionTest(BaseModel):
     """Schema for testing bot connection"""
     api_url: str
-    api_token: str
+    auth_method: Literal["token", "basic"] = "token"
+    api_token: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    
+    @validator('api_token')
+    def validate_token_auth(cls, v, values):
+        if values.get('auth_method') == 'token' and not v:
+            raise ValueError('api_token is required when auth_method is token')
+        return v
+    
+    @validator('username')
+    def validate_basic_auth_username(cls, v, values):
+        if values.get('auth_method') == 'basic' and not v:
+            raise ValueError('username is required when auth_method is basic')
+        return v
+    
+    @validator('password')
+    def validate_basic_auth_password(cls, v, values):
+        if values.get('auth_method') == 'basic' and not v:
+            raise ValueError('password is required when auth_method is basic')
+        return v
 
 
 class BotResponse(BaseModel):

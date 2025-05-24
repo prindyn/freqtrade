@@ -1,370 +1,387 @@
 <template>
-    <div class="bots-view p-p-3"> <!-- Added PrimeVue padding class -->
-        <h1>Manage Your Bots</h1>
-        <div class="controls p-d-flex p-jc-between p-mb-3"> <!-- PrimeFlex for layout -->
-            <div class="p-d-flex p-jc-start">
-                <Button @click="fetchBots" :loading="isLoading" class="p-button-info p-mr-2" icon="pi pi-refresh"
-                    label="Refresh Bots" />
-                <Button @click="goToCreateBot" class="p-button-success p-mr-2" icon="pi pi-plus" label="Create New Bot" />
+    <div class="dashboard-container p-4">
+        <!-- Dashboard Header -->
+        <div class="flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-900 mb-2">FreqTrade Dashboard</h1>
+                <p class="text-600">Manage and monitor your trading bots</p>
             </div>
-            <div class="p-d-flex p-jc-end">
-                <Button @click="goToConnectBot" class="p-button-secondary p-mr-2" icon="pi pi-link" label="Connect Bot" />
-                <Button @click="goToMarketplace" class="p-button-primary" icon="pi pi-shopping-cart" label="Marketplace" />
+            <div class="flex gap-2">
+                <Button icon="pi pi-shopping-cart" label="Marketplace" class="p-button-outlined"
+                    @click="$router.push('/marketplace')" />
+                <Button icon="pi pi-link" label="Connect Bot" class="p-button-primary" @click="showConnectBotModal" />
             </div>
         </div>
 
-        <Message v-if="error" severity="error" :closable="true" @close="error = null" class="p-mb-3">
-            Error fetching bots: {{ error.message || error }}
-            <div v-if="error.response && error.response.data && error.response.data.detail" class="p-mt-1">
-                <small>Detail: {{ error.response.data.detail }}</small>
-            </div>
-        </Message>
-
-        <DataTable :value="bots" :loading="isLoading" responsiveLayout="scroll" v-if="bots.length > 0 || isLoading"
-            class="p-datatable-customers">
-            <template #header>
-                <div class="table-header">
-                    Your Bots
+        <!-- Stats Cards -->
+        <div class="grid mb-4">
+            <div class="col-12 md:col-6 lg:col-3">
+                <div class="stat-card p-4 border-round-lg shadow-2">
+                    <div class="flex align-items-center">
+                        <div class="stat-icon bg-blue-100 text-blue-600 border-round mr-3">
+                            <i class="pi pi-cog text-2xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-900">{{ stats.totalBots }}</div>
+                            <div class="text-600">Total Bots</div>
+                        </div>
+                    </div>
                 </div>
-            </template>
-            <template #empty v-if="!isLoading && bots.length === 0">
-                No bots found for your account.
-            </template>
-            <Column field="name" header="Bot Name" :sortable="true" style="min-width:12rem">
-                <template #body="slotProps">
-                    <div class="p-d-flex p-ai-center">
-                        <span class="p-mr-2">{{ slotProps.data.name || slotProps.data.bot_id }}</span>
-                        <Tag v-if="slotProps.data.bot_type === 'external'" value="External" severity="info" class="p-tag-sm" />
-                        <Tag v-else-if="slotProps.data.bot_type === 'shared'" value="Shared" severity="success" class="p-tag-sm" />
-                        <Tag v-else value="Platform" severity="warning" class="p-tag-sm" />
-                    </div>
-                </template>
-            </Column>
-            <Column field="status" header="Status" :sortable="true" style="min-width:8rem">
-                <template #body="slotProps">
-                    <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)" />
-                </template>
-            </Column>
-            <Column field="source" header="Source" style="min-width:10rem">
-                <template #body="slotProps">
-                    <div v-if="slotProps.data.bot_type === 'external'">
-                        <i class="pi pi-link p-mr-1"></i>
-                        {{ slotProps.data.api_url || 'External API' }}
-                    </div>
-                    <div v-else-if="slotProps.data.bot_type === 'shared'">
-                        <i class="pi pi-cloud p-mr-1"></i>
-                        {{ slotProps.data.config_template || 'Platform Managed' }}
-                    </div>
-                    <div v-else>
-                        <i class="pi pi-server p-mr-1"></i>
-                        {{ slotProps.data.details?.host_port || 'N/A' }}
-                    </div>
-                </template>
-            </Column>
-            <Column field="details.created_at" header="Created At" :sortable="true" style="min-width:12rem">
-                <template #body="slotProps">
-                    {{ slotProps.data.details && slotProps.data.details.created_at ?
-                        formatDate(slotProps.data.details.created_at) : 'N/A' }}
-                </template>
-            </Column>
-            <Column header="Actions" style="min-width:18rem; text-align:center;">
-                <template #body="slotProps">
-                    <Button v-if="canStartBot(slotProps.data)" icon="pi pi-play" class="p-button-success p-button-sm p-mr-1"
-                        @click="startBot(slotProps.data)" v-tooltip.top="'Start Bot'" :loading="slotProps.data._starting" />
-                    <Button v-if="canStopBot(slotProps.data)" icon="pi pi-stop" class="p-button-warning p-button-sm p-mr-1"
-                        @click="stopBot(slotProps.data)" v-tooltip.top="'Stop Bot'" :loading="slotProps.data._stopping" />
-                    <Button icon="pi pi-align-justify" class="p-button-info p-button-sm p-mr-1"
-                        @click="openLogsModal(slotProps.data)" v-tooltip.top="'View Logs'" />
-                    <Button icon="pi pi-trash" class="p-button-danger p-button-sm"
-                        @click="confirmDeleteBot(slotProps.data)" v-tooltip.top="'Delete Bot'" />
-                </template>
-            </Column>
-        </DataTable>
-        <Message v-if="!isLoading && !error && bots.length === 0" severity="info" :closable="false">No bots found for
-            your
-            account.</Message>
-
-
-        <!-- Logs Modal -->
-        <Dialog header="Bot Logs" v-model:visible="showLogsModal" :style="{ width: '75vw', 'max-height': '90vh' }"
-            :modal="true" :dismissableMask="true" class="p-dialog-maximized">
-            <template #header>
-                <div class="p-d-flex p-ai-center">
-                    <i class="pi pi-align-justify p-mr-2" style="font-size: 1.5rem"></i>
-                    <span class="p-dialog-title">Logs for Bot: {{ selectedBotIdForLogs }}</span>
-                </div>
-            </template>
-            <div v-if="isLoadingLogs" class="p-text-center p-p-3">
-                <ProgressSpinner style="width:50px;height:50px" strokeWidth="8" animationDuration=".5s" />
-                <p>Loading logs...</p>
             </div>
-            <pre v-else-if="currentBotLogs" class="logs-pre">{{ currentBotLogs }}</pre>
-            <Message v-else severity="info">No logs available or an error occurred.</Message>
-            <template #footer>
-                <Button label="Close" icon="pi pi-times" @click="closeLogsModal" class="p-button-text" />
-            </template>
-        </Dialog>
+
+            <div class="col-12 md:col-6 lg:col-3">
+                <div class="stat-card p-4 border-round-lg shadow-2">
+                    <div class="flex align-items-center">
+                        <div class="stat-icon bg-green-100 text-green-600 border-round mr-3">
+                            <i class="pi pi-play text-2xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-900">{{ stats.runningBots }}</div>
+                            <div class="text-600">Running</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 lg:col-3">
+                <div class="stat-card p-4 border-round-lg shadow-2">
+                    <div class="flex align-items-center">
+                        <div class="stat-icon bg-orange-100 text-orange-600 border-round mr-3">
+                            <i class="pi pi-dollar text-2xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-900">${{ stats.totalProfit.toFixed(2) }}</div>
+                            <div class="text-600">Total Profit</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 md:col-6 lg:col-3">
+                <div class="stat-card p-4 border-round-lg shadow-2">
+                    <div class="flex align-items-center">
+                        <div class="stat-icon bg-purple-100 text-purple-600 border-round mr-3">
+                            <i class="pi pi-chart-line text-2xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-900">{{ stats.activeTrades }}</div>
+                            <div class="text-600">Active Trades</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bots Table -->
+        <div class="bot-table-container">
+            <div class="flex justify-content-between align-items-center mb-3">
+                <h2 class="text-xl font-semibold text-900">Your Bots</h2>
+                <div class="flex gap-2">
+                    <Button icon="pi pi-refresh" class="p-button-text" @click="refreshBots" :loading="loading" />
+                </div>
+            </div>
+
+            <DataTable :value="bots" :loading="loading" responsiveLayout="scroll" class="bot-table" :paginator="true"
+                :rows="10">
+                <Column field="name" header="Bot Name" :sortable="true">
+                    <template #body="slotProps">
+                        <div class="flex align-items-center gap-2">
+                            <Tag :value="slotProps.data.bot_type === 'external' ? 'External' : 'Shared'"
+                                :severity="slotProps.data.bot_type === 'external' ? 'info' : 'success'"
+                                class="text-xs" />
+                            <div class="font-medium text-900">{{ slotProps.data.name || slotProps.data.bot_id }}</div>
+                        </div>
+                    </template>
+                </Column>
+
+                <Column field="status" header="Status" :sortable="true">
+                    <template #body="slotProps">
+                        <Tag :value="slotProps.data.status" :severity="getStatusSeverity(slotProps.data.status)"
+                            class="font-medium" />
+                    </template>
+                </Column>
+
+                <Column field="created_at" header="Created" :sortable="true">
+                    <template #body="slotProps">
+                        <div class="text-600">{{ formatDate(slotProps.data.details?.created_at) }}</div>
+                    </template>
+                </Column>
+
+                <Column field="host_port" header="Port" :sortable="true">
+                    <template #body="slotProps">
+                        <div class="text-600">{{ slotProps.data.details?.host_port || 'N/A' }}</div>
+                    </template>
+                </Column>
+
+                <Column header="Actions">
+                    <template #body="slotProps">
+                        <div class="flex gap-2">
+                            <Button icon="pi pi-play" class="p-button-rounded p-button-text p-button-success"
+                                v-tooltip="'Start Bot'" @click="startBot(slotProps.data.bot_id)"
+                                :disabled="slotProps.data.status === 'running'" />
+                            <Button icon="pi pi-stop" class="p-button-rounded p-button-text p-button-warning"
+                                v-tooltip="'Stop Bot'" @click="stopBot(slotProps.data.bot_id)"
+                                :disabled="slotProps.data.status === 'stopped'" />
+                            <Button icon="pi pi-chart-line" class="p-button-rounded p-button-text p-button-info"
+                                v-tooltip="'View Performance'" @click="viewBotPerformance(slotProps.data.bot_id)" />
+                            <Button icon="pi pi-trash" class="p-button-rounded p-button-text p-button-danger"
+                                v-tooltip="'Delete Bot'" @click="deleteBot(slotProps.data.bot_id)" />
+                        </div>
+                    </template>
+                </Column>
+            </DataTable>
+        </div>
+
+        <!-- Connect Bot Modal -->
+        <ConnectBotModal v-model:visible="connectBotModalVisible" @bot-connected="onBotConnected" />
     </div>
 </template>
 
 <script>
-import api from '@/services/api';
-import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
+import Button from 'primevue/button';
 import Tag from 'primevue/tag';
-import Message from 'primevue/message';
 import Dialog from 'primevue/dialog';
-import ProgressSpinner from 'primevue/progressspinner';
-// For Tooltip (optional, if you want to use v-tooltip directive)
-// import Tooltip from 'primevue/tooltip'; // Not strictly needed if using global registration or if not using custom options
+import api from '@/services/api';
+import ConnectBotModal from '@/components/ConnectBotModal.vue';
 
 export default {
     name: 'BotsView',
-    // directives: { // Register tooltip if needed locally
-    //   'tooltip': Tooltip
-    // },
     components: {
-        Button,
         DataTable,
         Column,
+        Button,
         Tag,
-        Message,
         Dialog,
-        ProgressSpinner
+        ConnectBotModal
     },
     data() {
         return {
             bots: [],
-            isLoading: false,
-            error: null,
-            // tenantId: 'default-tenant', // Removed
-            showLogsModal: false,
-            currentBotLogs: '',
-            selectedBotIdForLogs: null,
-            isLoadingLogs: false,
+            loading: false,
+            connectBotModalVisible: false,
+            stats: {
+                totalBots: 0,
+                runningBots: 0,
+                totalProfit: 0,
+                activeTrades: 0
+            },
+            websocket: null
         };
     },
-    methods: {
-        async fetchBots() {
-            this.isLoading = true;
-            this.error = null;
-            try {
-                // Fetch both platform bots and external bots
-                const [platformBotsResponse, externalBotsResponse] = await Promise.all([
-                    api.getBots().catch(() => ({ data: [] })),
-                    api.getExternalBots().catch(() => ({ data: [] }))
-                ]);
-                
-                // Combine and mark bot types
-                const platformBots = (platformBotsResponse.data || []).map(bot => ({
-                    ...bot,
-                    bot_type: bot.bot_type || 'platform',
-                    name: bot.name || bot.bot_id
-                }));
-                
-                const externalBots = (externalBotsResponse.data || []).map(bot => ({
-                    ...bot,
-                    bot_type: 'external',
-                    name: bot.name || bot.bot_id || 'External Bot'
-                }));
-                
-                this.bots = [...platformBots, ...externalBots];
-            } catch (err) {
-                console.error('Error fetching bots:', err);
-                if (err.response && err.response.status === 404) {
-                    this.error = null;
-                    this.bots = [];
-                } else if (err.response) {
-                    this.error = { message: `Server error (${err.response.status}) while fetching bots.`, response: err.response };
-                } else if (err.request) {
-                    this.error = { message: 'No response from server. Is the backend running?' };
-                } else {
-                    this.error = { message: err.message || 'An unknown error occurred.' };
-                }
-                if (this.error) this.bots = [];
-            } finally {
-                this.isLoading = false;
-            }
-        },
-        goToCreateBot() {
-            this.$router.push({ name: 'create-bot' });
-        },
-        goToConnectBot() {
-            this.$router.push({ name: 'connect-bot' });
-        },
-        goToMarketplace() {
-            this.$router.push({ name: 'marketplace' });
-        },
-        async openLogsModal(bot) {
-            const botId = bot.bot_id || bot.id;
-            this.selectedBotIdForLogs = botId;
-            this.isLoadingLogs = true;
-            this.showLogsModal = true;
-            this.currentBotLogs = '';
-            try {
-                let response;
-                if (bot.bot_type === 'external') {
-                    response = await api.getExternalBotLogs(botId);
-                } else {
-                    response = await api.getBotLogs(botId);
-                }
-                
-                if (response.data && response.data.logs) {
-                    this.currentBotLogs = response.data.logs;
-                } else if (response.data && response.data.message) {
-                    this.currentBotLogs = response.data.message;
-                } else {
-                    this.currentBotLogs = 'No logs available or bot not running.';
-                }
-            } catch (err) {
-                console.error(`Error fetching logs for ${botId}:`, err);
-                this.currentBotLogs = `Failed to load logs: ${err.message || 'Unknown error'}`;
-                if (err.response && err.response.data && err.response.data.detail) {
-                    this.currentBotLogs += `\nDetail: ${err.response.data.detail}`;
-                }
-            } finally {
-                this.isLoadingLogs = false;
-            }
-        },
-        closeLogsModal() {
-            this.showLogsModal = false;
-            this.currentBotLogs = '';
-            this.selectedBotIdForLogs = null;
-        },
-        confirmDeleteBot(bot) {
-            const botName = bot.name || bot.bot_id;
-            if (confirm(`Are you sure you want to delete bot "${botName}"? This action cannot be undone.`)) {
-                this.deleteBot(bot);
-            }
-        },
-        async deleteBot(bot) {
-            const botId = bot.bot_id || bot.id;
-            try {
-                if (bot.bot_type === 'external') {
-                    await api.deleteExternalBot(botId);
-                } else {
-                    await api.deleteBot(botId);
-                }
-                this.fetchBots(); // Refresh list
-            } catch (err) {
-                console.error('Error deleting bot:', err);
-                this.error = { message: `Failed to delete bot: ${err.message || 'Unknown error'}` };
-            }
-        },
-        canStartBot(bot) {
-            const status = (bot.status || '').toLowerCase();
-            return !status.includes('running') && !bot._starting;
-        },
-        canStopBot(bot) {
-            const status = (bot.status || '').toLowerCase();
-            return status.includes('running') && !bot._stopping;
-        },
-        async startBot(bot) {
-            const botId = bot.bot_id || bot.id;
-            this.$set(bot, '_starting', true);
-            try {
-                if (bot.bot_type === 'external') {
-                    await api.startExternalBot(botId);
-                } else {
-                    await api.startBot(botId);
-                }
-                // Refresh the specific bot status
-                setTimeout(() => this.fetchBots(), 1000);
-            } catch (err) {
-                console.error('Error starting bot:', err);
-                this.error = { message: `Failed to start bot: ${err.message || 'Unknown error'}` };
-            } finally {
-                this.$set(bot, '_starting', false);
-            }
-        },
-        async stopBot(bot) {
-            const botId = bot.bot_id || bot.id;
-            this.$set(bot, '_stopping', true);
-            try {
-                if (bot.bot_type === 'external') {
-                    await api.stopExternalBot(botId);
-                } else {
-                    await api.stopBot(botId);
-                }
-                // Refresh the specific bot status
-                setTimeout(() => this.fetchBots(), 1000);
-            } catch (err) {
-                console.error('Error stopping bot:', err);
-                this.error = { message: `Failed to stop bot: ${err.message || 'Unknown error'}` };
-            } finally {
-                this.$set(bot, '_stopping', false);
-            }
-        },
-        formatDate(dateString) {
-            if (!dateString) return 'N/A';
-            const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-            return new Date(dateString).toLocaleDateString(undefined, options);
-        },
-        getStatusSeverity(status) {
-            if (!status) return 'info';
-            status = status.toLowerCase();
-            if (status.includes('running') || status.includes('created')) return 'success';
-            if (status.includes('stopped') || status.includes('exited')) return 'warning';
-            if (status.includes('error')) return 'danger';
-            return 'info';
+    async mounted() {
+        await this.loadBots();
+        this.initWebSocket();
+    },
+    beforeUnmount() {
+        if (this.websocket) {
+            this.websocket.close();
         }
     },
-    created() {
-        this.fetchBots();
-    },
+    methods: {
+        async loadBots() {
+            this.loading = true;
+            try {
+                // Load both legacy bots and new types
+                const [botsResponse, sharedBotsResponse] = await Promise.all([
+                    api.getBots().catch(() => ({ data: [] })),
+                    api.getMySharedBotSubscriptions().catch(() => ({ data: [] }))
+                ]);
+
+                // Combine both types, ensuring data is always an array
+                this.bots = [
+                    ...(botsResponse.data || []),
+                    ...(sharedBotsResponse.data || [])
+                ];
+
+                this.updateStats();
+            } catch (error) {
+                console.error('Error loading bots:', error);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'Failed to load bots',
+                    life: 3000
+                });
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async refreshBots() {
+            await this.loadBots();
+        },
+
+        updateStats() {
+            this.stats.totalBots = this.bots.length;
+            this.stats.runningBots = this.bots.filter(bot => bot.status === 'running').length;
+            // TODO: Calculate actual profit and trades from bot data
+            this.stats.totalProfit = 0;
+            this.stats.activeTrades = 0;
+        },
+
+        getStatusSeverity(status) {
+            const severityMap = {
+                'running': 'success',
+                'stopped': 'secondary',
+                'error': 'danger',
+                'starting': 'info',
+                'stopping': 'warning'
+            };
+            return severityMap[status] || 'secondary';
+        },
+
+        formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            return new Date(dateString).toLocaleDateString();
+        },
+
+        async startBot(botId) {
+            try {
+                await api.startBot(botId);
+                this.$toast.add({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: `Bot ${botId} start command sent`,
+                    life: 3000
+                });
+                await this.loadBots();
+            } catch (error) {
+                console.error('Error starting bot:', error);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'Failed to start bot',
+                    life: 3000
+                });
+            }
+        },
+
+        async stopBot(botId) {
+            try {
+                await api.stopBot(botId);
+                this.$toast.add({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: `Bot ${botId} stop command sent`,
+                    life: 3000
+                });
+                await this.loadBots();
+            } catch (error) {
+                console.error('Error stopping bot:', error);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'Failed to stop bot',
+                    life: 3000
+                });
+            }
+        },
+
+        async deleteBot(botId) {
+            if (confirm(`Are you sure you want to delete bot ${botId}?`)) {
+                try {
+                    await api.deleteBot(botId);
+                    this.$toast.add({
+                        severity: 'success',
+                        summary: 'Success',
+                        detail: `Bot ${botId} deleted successfully`,
+                        life: 3000
+                    });
+                    await this.loadBots();
+                } catch (error) {
+                    console.error('Error deleting bot:', error);
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: 'Failed to delete bot',
+                        life: 3000
+                    });
+                }
+            }
+        },
+
+        viewBotPerformance(botId) {
+            // TODO: Navigate to bot performance view
+            this.$router.push(`/bots/${botId}/performance`);
+        },
+
+        showConnectBotModal() {
+            this.connectBotModalVisible = true;
+        },
+
+        onBotConnected(botData) {
+            this.connectBotModalVisible = false;
+            this.$toast.add({
+                severity: 'success',
+                summary: 'Bot Connected',
+                detail: `Successfully connected ${botData.name}!`,
+                life: 5000
+            });
+            // Refresh the bots list
+            this.loadBots();
+        },
+
+        initWebSocket() {
+            // TODO: Implement WebSocket connection for real-time updates
+            // const token = localStorage.getItem('authToken');
+            // this.websocket = new WebSocket(`ws://localhost:8000/api/v1/ws/${token}`);
+            // this.websocket.onmessage = (event) => {
+            //     const data = JSON.parse(event.data);
+            //     this.handleWebSocketMessage(data);
+            // };
+        },
+
+        handleWebSocketMessage(data) {
+            if (data.type === 'bot_status_update') {
+                // Update bot statuses in real-time
+                this.loadBots();
+            }
+        }
+    }
 };
 </script>
 
 <style scoped>
-.bots-view {
-    /* padding: 20px; // Replaced by p-p-3 */
-    background-color: #fff;
-    border-radius: 8px;
-    /* box-shadow: 0 2px 4px rgba(0,0,0,0.1); // PrimeVue components have their own shadow */
-    /* max-width: 900px; // DataTable can be responsive */
-    margin: auto;
+.dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
-/* .controls { // Replaced by PrimeFlex classes
-  margin-bottom: 20px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-} */
+.stat-card {
+    background: white;
+    transition: transform 0.2s ease-in-out;
+}
 
-.table-header {
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-icon {
+    width: 3rem;
+    height: 3rem;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-size: 1.25rem;
-    font-weight: bold;
+    justify-content: center;
 }
 
-.logs-pre {
-    white-space: pre-wrap;
-    word-break: break-all;
-    background-color: #2a2a2a;
-    color: #f8f8f2;
-    padding: 15px;
-    border-radius: 4px;
-    max-height: 60vh;
-    /* Ensure this is less than Dialog's max-height to see effect */
-    overflow-y: auto;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.9rem;
+.bot-table-container {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-.p-message {
-    /* Ensure PrimeVue Message component takes full width if error message is long */
-    width: 100%;
-    box-sizing: border-box;
+:deep(.bot-table .p-datatable-tbody > tr > td) {
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
 }
 
-/* PrimeVue DataTable custom styling if needed */
-.p-datatable-customers .p-datatable-thead>tr>th {
-    background-color: #e9ecef;
+:deep(.bot-table .p-datatable-thead > tr > th) {
+    padding: 1rem;
+    background: #f8f9fa;
     color: #495057;
-    border-color: #dee2e6;
+    font-weight: 600;
 }
 </style>

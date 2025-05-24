@@ -41,7 +41,11 @@ async def test_bot_connection(
     )
     
     result = external_bot_manager.test_bot_connection(
-        api_url=connection_test.api_url, api_token=connection_test.api_token
+        api_url=connection_test.api_url,
+        auth_method=connection_test.auth_method,
+        api_token=connection_test.api_token,
+        username=connection_test.username,
+        password=connection_test.password
     )
 
     if result["success"]:
@@ -92,7 +96,11 @@ async def connect_external_bot(
     """
     # First test the connection
     connection_result = external_bot_manager.test_bot_connection(
-        api_url=bot_data.api_url, api_token=bot_data.api_token
+        api_url=bot_data.api_url,
+        auth_method=bot_data.auth_method,
+        api_token=bot_data.api_token,
+        username=bot_data.username,
+        password=bot_data.password
     )
 
     if not connection_result["success"]:
@@ -129,7 +137,10 @@ async def connect_external_bot(
         "name": bot_data.name,
         "description": bot_data.description,
         "api_url": bot_data.api_url,
+        "auth_method": bot_data.auth_method,
         "api_token": bot_data.api_token,
+        "username": bot_data.username,
+        "password": bot_data.password,  # Note: This should be encrypted in production
         "status": "connected",
     }
 
@@ -169,7 +180,11 @@ async def get_external_bot_status(
 
     # Get live status from the bot
     status_result = external_bot_manager.get_bot_status(
-        api_url=db_bot.api_url, api_token=db_bot.api_token
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
     )
 
     if status_result["success"]:
@@ -228,7 +243,11 @@ async def start_external_bot(
         )
 
     result = external_bot_manager.start_bot(
-        api_url=db_bot.api_url, api_token=db_bot.api_token
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
     )
 
     if result["success"]:
@@ -260,7 +279,11 @@ async def stop_external_bot(
         )
 
     result = external_bot_manager.stop_bot(
-        api_url=db_bot.api_url, api_token=db_bot.api_token
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
     )
 
     if result["success"]:
@@ -292,7 +315,11 @@ async def get_external_bot_performance(
         )
 
     result = external_bot_manager.get_bot_performance(
-        api_url=db_bot.api_url, api_token=db_bot.api_token
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password
     )
 
     if result["success"]:
@@ -325,7 +352,12 @@ async def get_external_bot_trades(
         )
 
     result = external_bot_manager.get_bot_trades(
-        api_url=db_bot.api_url, api_token=db_bot.api_token, limit=limit
+        api_url=db_bot.api_url,
+        auth_method=db_bot.auth_method or "token",
+        api_token=db_bot.api_token,
+        username=db_bot.username,
+        password=db_bot.password,
+        limit=limit
     )
 
     if result["success"]:

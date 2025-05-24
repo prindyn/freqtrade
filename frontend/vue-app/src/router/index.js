@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
-import CreateBotView from '../views/CreateBotView.vue';
 import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
 import DashboardView from '../views/DashboardView.vue';
-import ConnectBotView from '../views/ConnectBotView.vue';
 import MarketplaceView from '../views/MarketplaceView.vue';
+import ProfileView from '../views/ProfileView.vue';
+import SettingsView from '../views/SettingsView.vue';
+import TerminalView from '../views/TerminalView.vue';
 
 const routes = [
   {
@@ -41,21 +42,27 @@ const routes = [
     meta: { requiresAuth: true } // Example of adding auth guard meta
   },
   {
-    path: '/create-bot',
-    name: 'create-bot',
-    component: CreateBotView,
-    meta: { requiresAuth: true } // Example of adding auth guard meta
-  },
-  {
-    path: '/connect-bot',
-    name: 'connect-bot',
-    component: ConnectBotView,
-    meta: { requiresAuth: true }
-  },
-  {
     path: '/marketplace',
     name: 'marketplace',
     component: MarketplaceView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: ProfileView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: SettingsView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/terminal',
+    name: 'terminal',
+    component: TerminalView,
     meta: { requiresAuth: true }
   }
 ];
@@ -66,14 +73,21 @@ const router = createRouter({
 });
 
 // Navigation guard: redirect to login if not authenticated
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const loggedIn = localStorage.getItem('authToken');
-  const publicPages = ['login', 'register'];
+  const publicPages = ['home', 'login', 'register', 'about'];
   const authRequired = !publicPages.includes(to.name);
 
+  // If user is logged in and tries to access home, redirect to dashboard
+  if (loggedIn && to.name === 'home') {
+    return next({ name: 'dashboard' });
+  }
+
+  // If auth required and not logged in, redirect to login
   if (authRequired && !loggedIn) {
     return next({ name: 'login' });
   }
+  
   next();
 });
 
