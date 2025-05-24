@@ -3,10 +3,9 @@ from typing import Optional
 from app.models import user as models_user  # Alias to avoid confusion
 from app.schemas import user as schemas_user
 from app.core.security import get_password_hash
-import uuid
 
 
-def get_user_by_email(db: Session, email: str) -> Optional[models_user.User]: # This line needs change
+def get_user_by_email(db: Session, email: str) -> Optional[models_user.User]:
     return db.query(models_user.User).filter(models_user.User.email == email).first()
 
 

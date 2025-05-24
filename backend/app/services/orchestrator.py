@@ -110,9 +110,9 @@ class FreqtradeOrchestrator:
             logger.info(
                 f"Attempting to start container {container_name} with image {image_name}..."
             )
-            logger.info(f"  Port mapping: Host:{bot_config['port']} -> Container:8080")
+            logger.info(f"  Port mapping: Host:{internal_bot_details['port']} -> Container:8080")
             logger.info(
-                f"  User data volume: Host:{bot_config['user_data_path']} -> Container:/freqtrade/user_data"
+                f"  User data volume: Host:{internal_bot_details['user_data_path']} -> Container:/freqtrade/user_data"
             )
             logger.info(
                 f"  Config volume: Host:{user_config_json_path} -> Container:/freqtrade/config.json"
@@ -145,8 +145,8 @@ class FreqtradeOrchestrator:
                 "id": container.id,
                 "name": container.name,
                 "status": container.status,
-                "port": bot_config["port"],
-                "bot_id": bot_config["bot_id"],
+                "port": internal_bot_details["port"],
+                "bot_id": internal_bot_details["bot_id"],
             }
         except docker.errors.ImageNotFound:
             logger.error(f"Docker image {image_name} not found. Please pull it first.")

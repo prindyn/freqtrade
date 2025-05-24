@@ -44,15 +44,16 @@ const router = createRouter({
   routes
 });
 
-// Basic navigation guard
+// Navigation guard: redirect to login if not authenticated
 router.beforeEach((to, from, next) => {
   const loggedIn = localStorage.getItem('authToken');
+  const publicPages = ['login', 'register'];
+  const authRequired = !publicPages.includes(to.name);
 
-  if (to.matched.some(record => record.meta.requiresAuth) && !loggedIn) {
-    next({ name: 'login' }); // Redirect to login if not authenticated
-  } else {
-    next(); // Proceed as normal
+  if (authRequired && !loggedIn) {
+    return next({ name: 'login' });
   }
+  next();
 });
 
 export default router;
